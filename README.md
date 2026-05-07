@@ -1,0 +1,2 @@
+# jeu-scout
+conquerir wsp
