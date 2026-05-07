@@ -516,13 +516,13 @@ const ZONES_DATA = [
 //  ▼▼▼  NOMS DES PATROUILLES — MODIFIEZ ICI  ▼▼▼
 // ════════════════════════════════════════════════════════
 const PATROUILLES = [
-  { id:"p1", nom:"Cobras",    color:"#E74C3C" },
-  { id:"p2", nom:"Sangliers", color:"#2980B9" },
-  { id:"p3", nom:"Scorpions", color:"#E67E22" },
-  { id:"p4", nom:"Grizzly",   color:"#27AE60" },
-  { id:"p5", nom:"Jaguars",   color:"#8E44AD" },
-  { id:"p6", nom:"Guépards",  color:"#F39C12" },
-  { id:"p7", nom:"Pumas",     color:"#1ABC9C" },
+  { id:"p1", nom:"Cobras",   color:"#E74C3C" },
+  { id:"p2", nom:"Sangliers",    color:"#2980B9" },
+  { id:"p3", nom:"Scorpions",  color:"#E67E22" },
+  { id:"p4", nom:"Grizzly",     color:"#27AE60" },
+  { id:"p4", nom:"Jaguars",     color:"#8E44AD" },
+  { id:"p4", nom:"Guépards",     color:"#F39C12" },
+  { id:"p4", nom:"Pumas",     color:"#1ABC9C" },
 ];
 // ════════════════════════════════════════════════════════
 //  ▲▲▲  FIN DE LA PARTIE À MODIFIER  ▲▲▲
@@ -590,8 +590,8 @@ function initMap() {
 
   ZONES_DATA.forEach(z => {
     const poly = L.polygon(z.coords, {
-      color: '#95A5A6', weight: 2, opacity: .9,
-      fillColor: '#95A5A6', fillOpacity: .18
+      color: z.color, weight: 2.5, opacity: .9,
+      fillColor: z.color, fillOpacity: .18
     }).addTo(mapInstance);
     mapLayers[z.num] = poly;
 
@@ -603,12 +603,13 @@ function initMap() {
     const c = poly.getBounds().getCenter();
     L.marker(c, { interactive:false, icon: L.divIcon({
       className:'zone-lbl',
-      html:`<div style="background:#95A5A6;color:#fff;
+      html:`<div id="zone-label-${z.num}" style="background:#95A5A6;color:#fff;
         font-size:11px;font-weight:800;
         padding:2px 6px;border-radius:4px;
         border:1.5px solid rgba(255,255,255,.65);
         box-shadow:0 1px 4px rgba(0,0,0,.3);
-        white-space:nowrap;text-align:center;line-height:1.35;">
+        white-space:nowrap;text-align:center;line-height:1.35;
+        transition:background .4s;">
         ${z.num}<br><span style="font-size:9px;font-weight:500">${z.nom.split('/')[0].trim()}</span>
       </div>`,
       iconAnchor:[30,18], iconSize:[60,36]
@@ -673,25 +674,30 @@ function refreshPolyStyle(num) {
   const zone  = ZONES_DATA.find(z => z.num === num);
   if (!zone) return;
 
+  const labelEl = document.getElementById('zone-label-' + num);
+
   if (state && state.owner) {
     const patrol = getPatrol(state.owner);
-    const baseColor = patrol ? patrol.color : zone.color;
+    const baseColor = patrol ? patrol.color : '#95A5A6';
     poly.setStyle({
       color: baseColor, weight: 3,
       fillColor: baseColor, fillOpacity: .45,
       dashArray: null,
     });
+    if (labelEl) labelEl.style.background = baseColor;
   } else {
     poly.setStyle({
       color: '#95A5A6', weight: 2,
       fillColor: '#95A5A6', fillOpacity: .18,
       dashArray: null,
     });
+    if (labelEl) labelEl.style.background = '#95A5A6';
   }
 
   // Pending request — pulsing dash
   if (state && state.pendingPatrol) {
     poly.setStyle({ dashArray:'8 5', weight:3.5 });
+    if (labelEl) labelEl.style.background = '#E67E22';
   }
 }
 
