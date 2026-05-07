@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Conquerir WSP, un hommage à Chuck Norris</title>
+<title>Redorer le blason de Eddy Merckx</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- Firebase -->
@@ -364,80 +364,87 @@ button{cursor:pointer;font-family:inherit}
 // ════════════════════════════════════════════════════════
 const ZONES_DATA = [
   {
-    num: 1, nom: "Sam Penis",
+    num: 1, nom: "Tom Boonen",
     color: "#9B59B6", pts: 2,
     limites: "Av. de Roodebeek · Av. Nouvelle · Av. des Éperviers",
     defi: "Photographiez 4 détails architecturaux différents sur les façades du quartier (gargouille, millésime, enseigne ancienne, fer forgé…). Chaque détail = 1 pt bonus.",
     coords: [[50.8489,4.4050],[50.8489,4.4200],[50.8430,4.4200],[50.8430,4.4050]]
   },
   {
-    num: 2, nom: "Zaitch en pétard",
+    num: 2, nom: "Remcoooo",
     color: "#1ABC9C", pts: 3,
     limites: "Av. de Roodebeek · Av. de la Chapelle · Av. Nouvelle",
-    defi: "ORIENTATION LES YEUX BANDÉS : Un membre rejoint un point (max 30 m) guidé par ses coéquipiers, les yeux bandés. Réussi si arrivée en < 2 min sans enlever le bandeau.",
+    defi: "Filmer la patrouille qui fait du vélo sur le dos pendant 2 minutes",
     coords: [[50.8430,4.4050],[50.8430,4.4200],[50.8370,4.4200],[50.8370,4.4050]]
   },
   {
-    num: 3, nom: "Fifouz sous casque",
+    num: 3, nom: "Joseph Laffont",
     color: "#E74C3C", pts: 2,
     limites: "Av. Georges Henri · Rue Hankar · Rue de Linthout",
-    defi: "ART DE RUE DÉTECTIVE : Trouvez une plaque commémorative ou œuvre d'art public. Décrivez-la et inventez une histoire sur son origine. Max 2 min de présentation.",
+    defi: "Faites une oeuvre d'art à l'aide des membres de votre patrouille, et envoyez une photo",
     coords: [[50.8489,4.4200],[50.8489,4.4350],[50.8430,4.4350],[50.8430,4.4200]]
   },
   {
-    num: 4, nom: "Quartier Bergmann / Nouvelle",
+    num: 4, nom: "Ptit-dej Pogaçar",
     color: "#D35400", pts: 2,
     limites: "Av. G. Bergmann · Av. Nouvelle · Rue de Linthout",
-    defi: "TOUR DU MONDE : Trouvez des indices de présences internationales (enseignes étrangères, drapeaux, restaurants…). Listez ≥ 5 indices avec adresse exacte.",
+    defi: "Mettez toute votre patrouille en gueule-en-terre",
     coords: [[50.8430,4.4200],[50.8430,4.4350],[50.8370,4.4350],[50.8370,4.4200]]
   },
   {
-    num: 5, nom: "Quartier Vossegat / Chant d'Oiseau",
+    num: 5, nom: "Maxime Chantraine",
     color: "#F39C12", pts: 3,
     limites: "Av. du Chant d'Oiseau · Av. de Tervueren · Av. G. Bergmann",
-    defi: "LA CARTE HUMAINE : Sans carte ni téléphone, reproduisez le contour de WSP au sol avec des brindilles et placez 5 lieux importants. Un animateur évalue la précision.",
+    defi: "Sans carte ni téléphone, reproduisez le contour de WSP au sol avec des brindilles et placez 2 lieux importants",
     coords: [[50.8489,4.4350],[50.8489,4.4530],[50.8430,4.4530],[50.8430,4.4350]]
   },
   {
-    num: 6, nom: "Quartier Kessels / Doyen Boone",
+    num: 6, nom: "Colin Descamps",
     color: "#8E44AD", pts: 3,
     limites: "Rue Kessels · Rue du Doyen Boone · Av. de Tervueren",
-    defi: "INTERVIEW ÉCLAIR : Demandez à 3 passants : « Votre chose préférée à WSP ? ». Notez les réponses et présentez un TOP 3 commenté.",
+    defi: "Demandez à 3 passants : « Votre chose préférée à WSP ? ». Notez les réponses et présentez un TOP 3 commenté.",
     coords: [[50.8489,4.4530],[50.8489,4.4700],[50.8430,4.4700],[50.8430,4.4530]]
   },
   {
-    num: 7, nom: "Quartier Saint-Adrien / Linthout",
+    num: 7, nom: "Wout Van-Roubaix",
     color: "#16A085", pts: 2,
     limites: "Rue de Linthout · Av. Saint-Adrien · Av. Nouvelle",
-    defi: "LE PRIX JUSTE VERSION WSP : Trouvez 3 vitrines avec prix affichés. Devinez le total de 3 articles. Réussi si écart ≤ 15% de la somme réelle.",
+    defi: "Trouvez le grand panneau de Paris-Roubaix",
     coords: [[50.8370,4.4200],[50.8370,4.4350],[50.8310,4.4350],[50.8310,4.4200]]
   },
   {
-    num: 8, nom: "Quartier Chant d'Oiseau / Frères Legrain",
+    num: 8, nom: "Arnaud Deli-Traiteur",
     color: "#E67E22", pts: 3,
     limites: "Av. des Frères Legrain · Av. du Chant d'Oiseau · Av. de Tervueren",
-    defi: "CONCERT SAUVAGE : En 3 min, composez un jingle de 30 sec sur une chanson connue, avec des paroles sur WSP. Min 4 membres chantent ensemble !",
+    defi: "Faites un rap de 1min30 sur Woluwe-Saint-Pierre",
     coords: [[50.8370,4.4350],[50.8370,4.4530],[50.8310,4.4530],[50.8310,4.4350]]
   },
   {
-    num: 9, nom: "Quartier Vossegat Est",
+    num: 9, nom: "Tom Pied de Coq",
     color: "#27AE60", pts: 2,
     limites: "Av. des Frères Legrain · Av. de Tervueren · Bd de la Woluwe",
-    defi: "HAÏKU DE QUARTIER : Chaque membre écrit un haïku (5-7-5 syllabes) sur ce qu'il voit/sent/entend ici. Bonus si un habitant choisit son préféré !",
+    defi: "Faites une photo de patrouille créative devant la piste détruite de Sportcity. Point bonus pour la créativité.",
     coords: [[50.8370,4.4530],[50.8370,4.4700],[50.8310,4.4700],[50.8310,4.4530]]
   },
   {
-    num: 10, nom: "Montgomery / Duquesnoy",
+    num: 10, nom: "Julian Pas Philippe",
     color: "#2980B9", pts: 2,
     limites: "Sq. Montgomery · Av. de Tervueren · Rue Duquesnoy",
-    defi: "STATUE VIVANTE : Un membre imite un monument de WSP. Les autres devinent en max 3 tentatives. Chaque membre joue une statue différente.",
+    defi: "Un membre imite un monument de WSP. Les autres devinent en max 3 tentatives. Chaque membre joue une statue différente.",
     coords: [[50.8310,4.4050],[50.8310,4.4200],[50.8250,4.4200],[50.8250,4.4050]]
   },
   {
-    num: 11, nom: "Maison communale / Église Saint-Pierre",
+    num: 21, nom: "Square Eddy Merckx",
+    color: "#FFD700", pts: 3,
+    limites: "ce bon vieux Eddy Merckx",
+    defi: "Faire une reportage éclair du square Eddy Mercks de 1min",
+    coords: [[50.8310,4.4200], [50.8250,4.4200], [50.8250,4.4050], [50.8310,4.4050]]
+  },
+  {
+    num: 11, nom: "Chant d'Oiseau",
     color: "#3498DB", pts: 3,
     limites: "Av. Ch. Thielemans · Av. de l'Église · Av. Dumon",
-    defi: "JOURNALISTES EN HERBE : Interviewez un habitant (avec accord) – 3 questions sur son quartier. Bonus si né à WSP ou y vivant depuis 20+ ans !",
+    defi: "",
     coords: [[50.8310,4.4200],[50.8310,4.4350],[50.8250,4.4350],[50.8250,4.4200]]
   },
   {
