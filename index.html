@@ -438,7 +438,12 @@ const ZONES_DATA = [
     color: "#FFD700", pts: 3,
     limites: "ce bon vieux Eddy Merckx",
     defi: "Faire une reportage éclair du square Eddy Mercks de 1min",
-    coords: [[50.8310,4.4200], [50.8250,4.4200], [50.8250,4.4050], [50.8310,4.4050]]
+    coords: [
+      [50.8250, 4.4050],  // coin haut-gauche
+      [50.8250, 4.4200],  // coin haut-droite
+      [50.8190, 4.4200],  // coin bas-droite
+      [50.8190, 4.4050]   // coin bas-gauche
+    ]
   },
   {
     num: 11, nom: "Chant d'Oiseau",
