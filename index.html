@@ -710,7 +710,7 @@ function updateLegendRow(num) {
   const state = zoneStates[num];
   if (state && state.owner) {
     const p = getPatrol(state.owner);
-    el.textContent = p ? ' 👑 ' + p.nom.split(' ')[1] : ' 👑';
+    el.textContent = p ? ' 👑 ' + p.nom : ' 👑';
   } else {
     el.textContent = '';
   }
