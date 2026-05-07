@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conquerir WSP, un hommage à Chuck Norris</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+/* ── Reset & base ─────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e}
+button{cursor:pointer;font-family:inherit}
+
+
+#setup-screen{
+  position:fixed;inset:0;background:#1a1a2e;
+  display:flex;align-items:center;justify-content:center;
+  z-index:9999;padding:20px;
+}
+.setup-box{
+  background:#fff;border-radius:14px;padding:28px 32px;
+  width:100%;max-width:520px;box-shadow:0 8px 40px rgba(0,0,0,.3);
+}
+.setup-box h1{font-size:20px;font-weight:700;margin-bottom:4px}
+.setup-box .sub{font-size:12px;color:#888;margin-bottom:20px}
+.setup-box label{font-size:12px;font-weight:600;color:#444;display:block;margin-bottom:4px}
+.setup-box input{
+  width:100%;border:1.5px solid #ddd;border-radius:7px;
+  padding:8px 11px;font-size:13px;margin-bottom:12px;
+  transition:border .2s;
+}
+.setup-box input:focus{outline:none;border-color:#3498db}
+.setup-box .hint{
+  background:#eef6ff;border-radius:7px;padding:10px 13px;
+  font-size:11.5px;color:#2980b9;line-height:1.65;margin-bottom:16px;
+}
+.setup-box .hint code{background:#d4eaf9;padding:1px 4px;border-radius:3px;font-size:11px}
+.btn-primary{
+  width:100%;background:#1a1a2e;color:#fff;border:none;
+  padding:11px;border-radius:8px;font-size:14px;font-weight:700;
+}
+.btn-primary:hover{background:#2c3e50}
+.setup-error{color:#e74c3c;font-size:12px;margin-top:8px;display:none}
+
+/* ── Header ──────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh}
+.header{
+  background:#1a1a2e;color:#fff;
+  padding:10px 16px;display:flex;align-items:center;
+  justify-content:space-between;gap:12px;flex-shrink:0;
+  position:relative;z-index:500;
+}
+.header h1{font-size:15px;font-weight:700}
+.header .sub{font-size:10px;opacity:.65;margin-top:1px}
+.header-right{display:flex;gap:8px;align-items:center}
+.conn-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:#e74c3c;transition:background .4s;flex-shrink:0;
+}
+.conn-dot.online{background:#2ecc71}
+.btn-admin{
+  background:rgba(255,255,255,.12);color:#fff;border:none;
+  padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;
+}
+.btn-admin:hover{background:rgba(255,255,255,.22)}
+
+/* ── Map ─────────────────────────────────────────────── */
+#map{flex:1;width:100%}
+
+/* ── Scoreboard bar ──────────────────────────────────── */
+.scorebar{
+  background:#fff;border-top:2px solid #eee;
+  display:flex;overflow-x:auto;flex-shrink:0;
+  padding:6px 10px;gap:10px;
+}
+.score-pill{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 12px;border-radius:20px;
+  font-size:12px;font-weight:700;white-space:nowrap;
+  border:2px solid;flex-shrink:0;
+}
+
+/* ── Legend ──────────────────────────────────────────── */
+.legend{
+  background:#fff;border:1.5px solid #ddd;border-radius:8px;
+  padding:8px 11px;font-size:10.5px;line-height:1.9;
+  max-height:40vh;overflow-y:auto;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);
+}
+.legend-title{font-weight:700;font-size:11px;margin-bottom:3px;
+  border-bottom:1px solid #eee;padding-bottom:3px}
+.legend-row{display:flex;align-items:center;gap:6px;cursor:pointer;padding:0 2px}
+.legend-row:hover{font-weight:700}
+.legend-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0;border:1px solid rgba(0,0,0,.15)}
+.legend-crown{font-size:10px;margin-left:2px}
+
+/* ── Popups ──────────────────────────────────────────── */
+.leaflet-popup-content-wrapper{
+  border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.18);
+  min-width:270px;max-width:340px;padding:0;overflow:hidden;
+}
+.leaflet-popup-content{margin:0;padding:0}
+.leaflet-popup-tip-container{display:none}
+.p-head{padding:12px 15px 9px;color:#fff}
+.p-num{font-size:10px;font-weight:700;opacity:.8;text-transform:uppercase;letter-spacing:.8px}
+.p-nom{font-size:15px;font-weight:700;margin:1px 0}
+.p-owner{
+  display:inline-flex;align-items:center;gap:5px;
+  margin-top:5px;background:rgba(255,255,255,.22);
+  border-radius:5px;padding:3px 9px;font-size:11px;font-weight:700;
+}
+.p-body{padding:11px 15px 14px}
+.p-lim{font-size:10px;color:#888;font-style:italic;margin-bottom:8px;line-height:1.4}
+.p-section{font-size:9.5px;font-weight:700;text-transform:uppercase;
+  color:#aaa;letter-spacing:.7px;margin-bottom:3px}
+.p-defi{font-size:12px;line-height:1.65;color:#222;margin-bottom:10px}
+.p-pts-badge{
+  display:inline-block;background:#f0f2f5;border-radius:5px;
+  padding:3px 9px;font-size:11px;font-weight:700;color:#555;
+}
+
+/* Claim button (patrouille) */
+.btn-claim{
+  width:100%;margin-top:6px;padding:10px;border:none;border-radius:8px;
+  font-size:13px;font-weight:700;color:#fff;transition:opacity .2s;
+}
+.btn-claim:hover{opacity:.88}
+
+/* ── Admin modal ─────────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.55);
+  display:flex;align-items:center;justify-content:center;
+  z-index:2000;padding:16px;
+}
+.modal-overlay.hidden{display:none}
+.modal{
+  background:#fff;border-radius:14px;padding:24px 26px;
+  width:100%;max-width:460px;max-height:90vh;overflow-y:auto;
+  box-shadow:0 8px 40px rgba(0,0,0,.3);
+}
+.modal h2{font-size:17px;font-weight:700;margin-bottom:3px}
+.modal .modal-sub{font-size:12px;color:#888;margin-bottom:18px}
+.modal label{font-size:12px;font-weight:600;color:#444;display:block;margin-bottom:4px}
+.modal input,.modal textarea,.modal select{
+  width:100%;border:1.5px solid #ddd;border-radius:7px;
+  padding:8px 11px;font-size:13px;margin-bottom:14px;
+  font-family:inherit;transition:border .2s;
+}
+.modal input:focus,.modal textarea:focus,.modal select:focus{
+  outline:none;border-color:#3498db;
+}
+.modal textarea{resize:vertical;min-height:80px}
+.modal-btns{display:flex;gap:10px}
+.btn-confirm{
+  flex:1;background:#27ae60;color:#fff;border:none;
+  padding:10px;border-radius:8px;font-size:14px;font-weight:700;
+}
+.btn-confirm:hover{background:#219a52}
+.btn-cancel{
+  background:#f0f2f5;color:#555;border:none;
+  padding:10px 16px;border-radius:8px;font-size:14px;font-weight:600;
+}
+.btn-cancel:hover{background:#e0e2e5}
+
+/* Admin login modal */
+.modal .pw-row{display:flex;gap:8px}
+.modal .pw-row input{flex:1;margin-bottom:0}
+.modal .pw-row button{
+  background:#1a1a2e;color:#fff;border:none;
+  padding:8px 14px;border-radius:7px;font-size:13px;font-weight:600;
+  white-space:nowrap;
+}
+.pw-error{color:#e74c3c;font-size:11.5px;margin-top:6px;display:none}
+
+/* Admin dashboard */
+#admin-panel{padding:0}
+.admin-header{
+  background:#1a1a2e;color:#fff;
+  padding:14px 18px;border-radius:12px 12px 0 0;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.admin-header h2{font-size:16px;font-weight:700;margin:0}
+.btn-close-admin{
+  background:rgba(255,255,255,.12);color:#fff;border:none;
+  padding:5px 12px;border-radius:6px;font-size:12px;
+}
+.btn-close-admin:hover{background:rgba(255,255,255,.22)}
+.admin-body{padding:16px 18px}
+.admin-zone-card{
+  border:1.5px solid #eee;border-radius:9px;
+  padding:11px 14px;margin-bottom:10px;
+  transition:border .2s;
+}
+.admin-zone-card:hover{border-color:#bbb}
+.admin-zone-card.has-request{border-color:#e67e22;background:#fffbf5}
+.azc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.azc-name{font-size:13px;font-weight:700}
+.azc-owner{font-size:11px;color:#fff;padding:2px 9px;border-radius:20px;font-weight:700;white-space:nowrap}
+.azc-request{
+  margin-top:8px;background:#fff3e0;border-radius:7px;
+  padding:8px 11px;font-size:12px;color:#a04000;
+}
+.azc-request strong{display:block;margin-bottom:4px}
+.azc-actions{display:flex;gap:7px;margin-top:8px}
+.btn-validate{
+  background:#27ae60;color:#fff;border:none;
+  padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;
+}
+.btn-validate:hover{background:#219a52}
+.btn-reject{
+  background:#e74c3c;color:#fff;border:none;
+  padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;
+}
+.btn-reject:hover{background:#c0392b}
+.btn-reset-zone{
+  background:#f0f2f5;color:#555;border:none;
+  padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;
+}
+.btn-reset-zone:hover{background:#e0e2e5}
+.admin-score{
+  background:#f8f9fa;border-radius:9px;padding:12px 14px;
+  margin-bottom:14px;
+}
+.admin-score h3{font-size:13px;font-weight:700;margin-bottom:8px}
+.score-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;font-size:13px}
+.score-num{font-weight:700;font-size:16px}
+
+/* Zone label tooltip */
+.zone-lbl{
+  background:transparent;border:none;box-shadow:none;
+  pointer-events:none;
+}
+
+/* Toast */
+.toast{
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+  background:#1a1a2e;color:#fff;padding:10px 20px;
+  border-radius:20px;font-size:13px;font-weight:600;
+  z-index:3000;opacity:0;transition:opacity .3s;pointer-events:none;
+  white-space:nowrap;
+}
+.toast.show{opacity:1}
+
+@media(max-width:480px){
+  .modal{padding:18px}
+  .setup-box{padding:22px 18px}
+}
+</style>
+</head>
+<body>
+
+<!-- Config intégrée -->
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     MAIN APP
+     ══════════════════════════════════════════════════════ -->
+<div id="app">
+  <div class="header">
+    <div>
+      <h1> Conquerir WSP en hommage à Chuck Norris</h1>
+      <div class="sub">Touchez une zone pour voir le défi · <span id="conn-label">Connexion…</span></div>
+    </div>
+    <div class="header-right">
+      <div class="conn-dot" id="conn-dot"></div>
+      <button class="btn-admin" onclick="openAdminLogin()">🔐 Animateur</button>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="scorebar" id="scorebar"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     MODALS
+     ══════════════════════════════════════════════════════ -->
+
+<!-- Claim modal (patrouille déclare victoire) -->
+<div class="modal-overlay hidden" id="claim-modal">
+  <div class="modal">
+    <h2 id="claim-title">Conquérir la zone</h2>
+    <p class="modal-sub" id="claim-sub"></p>
+    <label>Votre patrouille</label>
+    <select id="claim-patrol"></select>
+    <p style="font-size:12px;color:#888;margin-top:-10px;margin-bottom:14px">
+      ⏳ Un animateur devra valider votre conquête.
+    </p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('claim-modal')">Annuler</button>
+      <button class="btn-confirm" onclick="submitClaim()">Demander la validation ✋</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin login -->
+<div class="modal-overlay hidden" id="login-modal">
+  <div class="modal">
+    <h2>🔐 Espace animateur</h2>
+    <p class="modal-sub">Entrez le mot de passe configuré au démarrage</p>
+    <label>Mot de passe</label>
+    <div class="pw-row">
+      <input id="login-pw" type="password" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter')checkLogin()"/>
+      <button onclick="checkLogin()">Entrer</button>
+    </div>
+    <div class="pw-error" id="pw-error">Mot de passe incorrect</div>
+    <br>
+    <button class="btn-cancel" style="width:100%" onclick="closeModal('login-modal')">Annuler</button>
+  </div>
+</div>
+
+<!-- Admin panel -->
+<div class="modal-overlay hidden" id="admin-modal">
+  <div class="modal" style="padding:0;max-width:520px">
+    <div class="admin-header">
+      <h2>🎯 Tableau de bord animateur</h2>
+      <button class="btn-close-admin" onclick="closeModal('admin-modal')">✕ Fermer</button>
+    </div>
+    <div class="admin-body">
+      <div class="admin-score" id="admin-score"></div>
+      <h3 style="font-size:13px;font-weight:700;margin-bottom:10px">Zones & demandes en attente</h3>
+      <div id="admin-zones-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Admin: validate conquest (set new reconquest defi) -->
+<div class="modal-overlay hidden" id="validate-modal">
+  <div class="modal">
+    <h2 id="val-title">Valider la conquête</h2>
+    <p class="modal-sub" id="val-sub"></p>
+    <label>Défi de reconquête (pour la prochaine patrouille qui veut reprendre cette zone)</label>
+    <textarea id="val-defi" rows="4"
+      placeholder="Ex: Chantez une chanson en canon pendant 30 secondes devant 5 témoins…"></textarea>
+    <label>Points de reconquête</label>
+    <select id="val-pts">
+      <option value="1">1 point</option>
+      <option value="2">2 points</option>
+      <option value="3" selected>3 points</option>
+      <option value="4">4 points</option>
+      <option value="5">5 points</option>
+    </select>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('validate-modal')">Annuler</button>
+      <button class="btn-confirm" onclick="confirmValidate()">✅ Valider & publier</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════════════════════════════════════════════
+     JAVASCRIPT
+     ══════════════════════════════════════════════════════ -->
+<script>
+// ════════════════════════════════════════════════════════
+//  ▼▼▼  DONNÉES DES ZONES — MODIFIEZ ICI  ▼▼▼
+// ════════════════════════════════════════════════════════
+const ZONES_DATA = [
+  {
+    num: 1, nom: "Quartier Roodebeek Nord",
+    color: "#9B59B6", pts: 2,
+    limites: "Av. de Roodebeek · Av. Nouvelle · Av. des Éperviers",
+    defi: "CHASSE AUX FAÇADES : Photographiez 4 détails architecturaux différents sur les façades du quartier (gargouille, millésime, enseigne ancienne, fer forgé…). Chaque détail = 1 pt bonus.",
+    coords: [[50.8489,4.4050],[50.8489,4.4200],[50.8430,4.4200],[50.8430,4.4050]]
+  },
+  {
+    num: 2, nom: "Parc Roodebeek",
+    color: "#1ABC9C", pts: 3,
+    limites: "Av. de Roodebeek · Av. de la Chapelle · Av. Nouvelle",
+    defi: "ORIENTATION LES YEUX BANDÉS : Un membre rejoint un point (max 30 m) guidé par ses coéquipiers, les yeux bandés. Réussi si arrivée en < 2 min sans enlever le bandeau.",
+    coords: [[50.8430,4.4050],[50.8430,4.4200],[50.8370,4.4200],[50.8370,4.4050]]
+  },
+  {
+    num: 3, nom: "Quartier Georges Henri",
+    color: "#E74C3C", pts: 2,
+    limites: "Av. Georges Henri · Rue Hankar · Rue de Linthout",
+    defi: "ART DE RUE DÉTECTIVE : Trouvez une plaque commémorative ou œuvre d'art public. Décrivez-la et inventez une histoire sur son origine. Max 2 min de présentation.",
+    coords: [[50.8489,4.4200],[50.8489,4.4350],[50.8430,4.4350],[50.8430,4.4200]]
+  },
+  {
+    num: 4, nom: "Quartier Bergmann / Nouvelle",
+    color: "#D35400", pts: 2,
+    limites: "Av. G. Bergmann · Av. Nouvelle · Rue de Linthout",
+    defi: "TOUR DU MONDE : Trouvez des indices de présences internationales (enseignes étrangères, drapeaux, restaurants…). Listez ≥ 5 indices avec adresse exacte.",
+    coords: [[50.8430,4.4200],[50.8430,4.4350],[50.8370,4.4350],[50.8370,4.4200]]
+  },
+  {
+    num: 5, nom: "Quartier Vossegat / Chant d'Oiseau",
+    color: "#F39C12", pts: 3,
+    limites: "Av. du Chant d'Oiseau · Av. de Tervueren · Av. G. Bergmann",
+    defi: "LA CARTE HUMAINE : Sans carte ni téléphone, reproduisez le contour de WSP au sol avec des brindilles et placez 5 lieux importants. Un animateur évalue la précision.",
+    coords: [[50.8489,4.4350],[50.8489,4.4530],[50.8430,4.4530],[50.8430,4.4350]]
+  },
+  {
+    num: 6, nom: "Quartier Kessels / Doyen Boone",
+    color: "#8E44AD", pts: 3,
+    limites: "Rue Kessels · Rue du Doyen Boone · Av. de Tervueren",
+    defi: "INTERVIEW ÉCLAIR : Demandez à 3 passants : « Votre chose préférée à WSP ? ». Notez les réponses et présentez un TOP 3 commenté.",
+    coords: [[50.8489,4.4530],[50.8489,4.4700],[50.8430,4.4700],[50.8430,4.4530]]
+  },
+  {
+    num: 7, nom: "Quartier Saint-Adrien / Linthout",
+    color: "#16A085", pts: 2,
+    limites: "Rue de Linthout · Av. Saint-Adrien · Av. Nouvelle",
+    defi: "LE PRIX JUSTE VERSION WSP : Trouvez 3 vitrines avec prix affichés. Devinez le total de 3 articles. Réussi si écart ≤ 15% de la somme réelle.",
+    coords: [[50.8370,4.4200],[50.8370,4.4350],[50.8310,4.4350],[50.8310,4.4200]]
+  },
+  {
+    num: 8, nom: "Quartier Chant d'Oiseau / Frères Legrain",
+    color: "#E67E22", pts: 3,
+    limites: "Av. des Frères Legrain · Av. du Chant d'Oiseau · Av. de Tervueren",
+    defi: "CONCERT SAUVAGE : En 3 min, composez un jingle de 30 sec sur une chanson connue, avec des paroles sur WSP. Min 4 membres chantent ensemble !",
+    coords: [[50.8370,4.4350],[50.8370,4.4530],[50.8310,4.4530],[50.8310,4.4350]]
+  },
+  {
+    num: 9, nom: "Quartier Vossegat Est",
+    color: "#27AE60", pts: 2,
+    limites: "Av. des Frères Legrain · Av. de Tervueren · Bd de la Woluwe",
+    defi: "HAÏKU DE QUARTIER : Chaque membre écrit un haïku (5-7-5 syllabes) sur ce qu'il voit/sent/entend ici. Bonus si un habitant choisit son préféré !",
+    coords: [[50.8370,4.4530],[50.8370,4.4700],[50.8310,4.4700],[50.8310,4.4530]]
+  },
+  {
+    num: 10, nom: "Montgomery / Duquesnoy",
+    color: "#2980B9", pts: 2,
+    limites: "Sq. Montgomery · Av. de Tervueren · Rue Duquesnoy",
+    defi: "STATUE VIVANTE : Un membre imite un monument de WSP. Les autres devinent en max 3 tentatives. Chaque membre joue une statue différente.",
+    coords: [[50.8310,4.4050],[50.8310,4.4200],[50.8250,4.4200],[50.8250,4.4050]]
+  },
+  {
+    num: 11, nom: "Maison communale / Église Saint-Pierre",
+    color: "#3498DB", pts: 3,
+    limites: "Av. Ch. Thielemans · Av. de l'Église · Av. Dumon",
+    defi: "JOURNALISTES EN HERBE : Interviewez un habitant (avec accord) – 3 questions sur son quartier. Bonus si né à WSP ou y vivant depuis 20+ ans !",
+    coords: [[50.8310,4.4200],[50.8310,4.4350],[50.8250,4.4350],[50.8250,4.4200]]
+  },
+  {
+    num: 12, nom: "Quartier Haute-Savoie / Saint-Hubert",
+    color: "#1ABC9C", pts: 2,
+    limites: "Av. de la Haute Savoie · Clos Saint-Hubert · Av. de Tervueren",
+    defi: "TÉLÉPATHIE EN ÉQUIPE : Sans se concerter, chaque membre note l'endroit le + emblématique de WSP. Si ≥ moitié choisit le même, défi réussi !",
+    coords: [[50.8310,4.4350],[50.8310,4.4530],[50.8250,4.4530],[50.8250,4.4350]]
+  },
+  {
+    num: 13, nom: "Quartier Val des Roses / Vergote",
+    color: "#C0392B", pts: 2,
+    limites: "Rue Vergote · Av. du Val des Roses · Av. de Tervueren",
+    defi: "ENQUÊTE DE VOISINAGE : Trouvez : 1 boîte aux lettres originale, 1 n° impair > 50, 1 commerce avec enseigne en 2 langues. Notez l'adresse de chacun.",
+    coords: [[50.8310,4.4530],[50.8310,4.4700],[50.8250,4.4700],[50.8250,4.4530]]
+  },
+  {
+    num: 14, nom: "Parvis du Tram / Place Dumon",
+    color: "#E74C3C", pts: 3,
+    limites: "Av. de Tervueren · Av. Dumon · Rue Vergote",
+    defi: "FLASH MOB SILENCIEUX : Mimez une scène de voyage en tram pendant 60 sec SANS un mot. Un passant doit deviner en max 3 tentatives.",
+    coords: [[50.8250,4.4200],[50.8250,4.4350],[50.8190,4.4350],[50.8190,4.4200]]
+  },
+  {
+    num: 15, nom: "Quartier Val des Roses Nord",
+    color: "#7F8C8D", pts: 3,
+    limites: "Rue Vergote · Av. des Éperviers · Bd du Souverain",
+    defi: "CALCUL DE LA COMMUNE : Sans smartphone, estimez le périmètre de WSP (surface ≈ 4,85 km²). Réussi si écart < 20% de la valeur réelle (≈ 9,5 km).",
+    coords: [[50.8250,4.4350],[50.8250,4.4530],[50.8190,4.4530],[50.8190,4.4350]]
+  },
+  {
+    num: 16, nom: "Quartier Frères Legrain / Herrmann-Debroux",
+    color: "#9B59B6", pts: 2,
+    limites: "Av. des Frères Legrain · Av. Herrmann-Debroux · Bd de la Woluwe",
+    defi: "SCULPTURES VIVANTES : En équipe, formez un tableau vivant représentant une scène historique de Belgique. Un passant doit deviner laquelle.",
+    coords: [[50.8250,4.4530],[50.8250,4.4700],[50.8190,4.4700],[50.8190,4.4530]]
+  },
+  {
+    num: 17, nom: "Parc de Woluwe Ouest / Hippodrome",
+    color: "#27AE60", pts: 3,
+    limites: "Bd du Souverain · Av. de Tervueren · Av. de l'Hippodrome",
+    defi: "PARCOURS D'OBSTACLES : Créez un parcours avec les éléments du parc (bancs, arbres…). Min 5 étapes. Chaque membre doit le compléter en < 60 sec.",
+    coords: [[50.8190,4.4050],[50.8190,4.4280],[50.8130,4.4280],[50.8130,4.4050]]
+  },
+  {
+    num: 18, nom: "Parc de Woluwe / Étangs",
+    color: "#2980B9", pts: 2,
+    limites: "Av. de l'Hippodrome · Av. de Tervueren · Bd du Souverain",
+    defi: "SCULPTURE NATURELLE : En 5 min, construisez une sculpture uniquement avec des éléments trouvés au sol. Elle doit représenter un animal. Photo à l'appui !",
+    coords: [[50.8190,4.4280],[50.8190,4.4530],[50.8130,4.4530],[50.8130,4.4280]]
+  },
+  {
+    num: 19, nom: "Parc de Woluwe Est",
+    color: "#E67E22", pts: 3,
+    limites: "Av. du Vogelzang · Bd du Souverain · Av. Herrmann-Debroux",
+    defi: "LA WOLUWE EN SCÈNE : Reconstituez la légende de la rivière Woluwe en mini-théâtre de 1 min. Chaque membre joue un rôle (la rivière, un habitant médiéval, un canard…).",
+    coords: [[50.8190,4.4530],[50.8190,4.4700],[50.8130,4.4700],[50.8130,4.4530]]
+  },
+  {
+    num: 20, nom: "Parc Parmentier / Vogelzang Sud",
+    color: "#2ECC71", pts: 2,
+    limites: "Av. Parmentier · Bd du Souverain · Av. de Tervueren",
+    defi: "PLAQUES DE RUE : Trouvez 3 plaques de rue dans cette zone. Pour chacune, inventez une histoire sur la personne ou le lieu qui lui donne son nom. 2 min de présentation.",
+    coords: [[50.8130,4.4050],[50.8130,4.4280],[50.8070,4.4280],[50.8070,4.4050]]
+  },
+];
+
+// ════════════════════════════════════════════════════════
+//  ▼▼▼  NOMS DES PATROUILLES — MODIFIEZ ICI  ▼▼▼
+// ════════════════════════════════════════════════════════
+const PATROUILLES = [
+  { id:"p1", nom:"Cobras",   color:"#E74C3C" },
+  { id:"p2", nom:"Sangliers",    color:"#2980B9" },
+  { id:"p3", nom:"Scorpions",  color:"#E67E22" },
+  { id:"p4", nom:"Grizzly",     color:"#27AE60" },
+  { id:"p4", nom:"Jaguars",     color:"#8E44AD" },
+  { id:"p4", nom:"Guépards",     color:"#F39C12" },
+  { id:"p4", nom:"Pumas",     color:"#1ABC9C" },
+];
+// ════════════════════════════════════════════════════════
+//  ▲▲▲  FIN DE LA PARTIE À MODIFIER  ▲▲▲
+// ════════════════════════════════════════════════════════
+
+
+
+// ── State ──────────────────────────────────────────────
+let db = null;
+let adminPw = "";
+let isAdmin = false;
+let zoneStates = {};   // { [num]: { owner, defi, pts, reconqDefi, reconqPts, pendingPatrol } }
+let mapLayers = {};
+let currentClaimZone = null;
+let currentValidateZone = null;
+let mapInstance = null;
+
+// ── Firebase setup (config intégrée) ──────────────────
+// ════════════════════════════════════════════════════════
+//  ▼▼▼  MOT DE PASSE ANIMATEUR — MODIFIEZ ICI  ▼▼▼
+// ════════════════════════════════════════════════════════
+const ADMIN_PASSWORD = "taktaktakdilis";
+// ════════════════════════════════════════════════════════
+
+function startApp() {
+  adminPw = ADMIN_PASSWORD;
+  try {
+    const firebaseConfig = {
+      apiKey: "AIzaSyBsMzwUVuyogzSsbEsmwlVqFZsN2CkPFLc",
+      authDomain: "conquerir-wsp.firebaseapp.com",
+      databaseURL: "https://conquerir-wsp-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "conquerir-wsp",
+      storageBucket: "conquerir-wsp.firebasestorage.app",
+      messagingSenderId: "800817314787",
+      appId: "1:800817314787:web:c4d71fec2ae1fc46af7ed6"
+    };
+    const firebaseApp = firebase.initializeApp(firebaseConfig);
+    db = firebase.database(firebaseApp);
+    initMap();
+    listenToZones();
+    monitorConnection();
+  } catch(e) {
+    console.error("Erreur Firebase:", e);
+    alert("Erreur de connexion Firebase : " + e.message);
+  }
+}
+
+// ── Connection monitor ─────────────────────────────────
+function monitorConnection() {
+  const connRef = db.ref('.info/connected');
+  connRef.on('value', snap => {
+    const online = snap.val();
+    document.getElementById('conn-dot').classList.toggle('online', online);
+    document.getElementById('conn-label').textContent = online ? 'En ligne ✓' : 'Hors ligne…';
+  });
+}
+
+// ── Map init ───────────────────────────────────────────
+function initMap() {
+  mapInstance = L.map('map', { zoomControl: true }).setView([50.833, 4.438], 14);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution:'© OpenStreetMap · © CARTO',
+    subdomains:'abcd', maxZoom:20
+  }).addTo(mapInstance);
+
+  ZONES_DATA.forEach(z => {
+    const poly = L.polygon(z.coords, {
+      color: z.color, weight: 2.5, opacity: .9,
+      fillColor: z.color, fillOpacity: .18
+    }).addTo(mapInstance);
+    mapLayers[z.num] = poly;
+
+    poly.on('click', () => openClaimModal(z.num));
+    poly.on('mouseover', function() { this.setStyle({ fillOpacity:.4, weight:3.5 }); });
+    poly.on('mouseout',  function() { refreshPolyStyle(z.num); });
+
+    // Zone label
+    const c = poly.getBounds().getCenter();
+    L.marker(c, { interactive:false, icon: L.divIcon({
+      className:'zone-lbl',
+      html:`<div style="background:${z.color};color:#fff;
+        font-size:11px;font-weight:800;
+        padding:2px 6px;border-radius:4px;
+        border:1.5px solid rgba(255,255,255,.65);
+        box-shadow:0 1px 4px rgba(0,0,0,.3);
+        white-space:nowrap;text-align:center;line-height:1.35;">
+        ${z.num}<br><span style="font-size:9px;font-weight:500">${z.nom.split('/')[0].trim()}</span>
+      </div>`,
+      iconAnchor:[30,18], iconSize:[60,36]
+    })}).addTo(mapInstance);
+  });
+
+  // Legend
+  const Leg = L.Control.extend({
+    options:{ position:'bottomright' },
+    onAdd() {
+      const d = L.DomUtil.create('div','legend');
+      d.id = 'legend-inner';
+      d.innerHTML = '<div class="legend-title">20 Zones</div>';
+      ZONES_DATA.forEach(z => {
+        const row = document.createElement('div');
+        row.className = 'legend-row';
+        row.id = 'leg-' + z.num;
+        row.innerHTML = `<div class="legend-dot" style="background:${z.color}"></div>
+          <span>${z.num}. ${z.nom}</span><span class="legend-crown" id="legcrown-${z.num}"></span>`;
+        row.onclick = () => mapInstance.flyToBounds(mapLayers[z.num].getBounds(), {padding:[40,40],duration:.5});
+        d.appendChild(row);
+      });
+      L.DomEvent.disableScrollPropagation(d);
+      L.DomEvent.disableClickPropagation(d);
+      return d;
+    }
+  });
+  new Leg().addTo(mapInstance);
+
+  mapInstance.fitBounds(
+    L.latLngBounds(ZONES_DATA.flatMap(z=>z.coords)),
+    { padding:[14,14] }
+  );
+}
+
+// ── Firebase listeners ─────────────────────────────────
+function listenToZones() {
+  db.ref('zones').on('value', snap => {
+    zoneStates = snap.val() || {};
+    updateAllUI();
+  });
+}
+
+// ── UI update after state change ───────────────────────
+function updateAllUI() {
+  ZONES_DATA.forEach(z => {
+    refreshPolyStyle(z.num);
+    updateLegendRow(z.num);
+  });
+  updateScorebar();
+  if (isAdmin) renderAdminPanel();
+}
+
+function getPatrol(id) {
+  return PATROUILLES.find(p => p.id === id) || null;
+}
+
+function refreshPolyStyle(num) {
+  const poly = mapLayers[num];
+  if (!poly) return;
+  const state = zoneStates[num];
+  const zone  = ZONES_DATA.find(z => z.num === num);
+  if (!zone) return;
+
+  if (state && state.owner) {
+    const patrol = getPatrol(state.owner);
+    const baseColor = patrol ? patrol.color : zone.color;
+    poly.setStyle({
+      color: baseColor, weight: 3,
+      fillColor: baseColor, fillOpacity: .45,
+      dashArray: null,
+    });
+  } else {
+    poly.setStyle({
+      color: zone.color, weight: 2.5,
+      fillColor: zone.color, fillOpacity: .18,
+      dashArray: null,
+    });
+  }
+
+  // Pending request — pulsing dash
+  if (state && state.pendingPatrol) {
+    poly.setStyle({ dashArray:'8 5', weight:3.5 });
+  }
+}
+
+function updateLegendRow(num) {
+  const el = document.getElementById('legcrown-' + num);
+  if (!el) return;
+  const state = zoneStates[num];
+  if (state && state.owner) {
+    const p = getPatrol(state.owner);
+    el.textContent = p ? ' 👑 ' + p.nom.split(' ')[1] : ' 👑';
+  } else {
+    el.textContent = '';
+  }
+}
+
+function updateScorebar() {
+  const scores = {};
+  PATROUILLES.forEach(p => scores[p.id] = 0);
+  Object.values(zoneStates).forEach(s => {
+    if (s.owner && scores[s.owner] !== undefined) {
+      scores[s.owner] += (s.pts || 0);
+    }
+  });
+  const bar = document.getElementById('scorebar');
+  bar.innerHTML = PATROUILLES.map(p =>
+    `<div class="score-pill" style="color:${p.color};border-color:${p.color}">
+      ${p.nom} <span style="color:${p.color}">${scores[p.id]} pts</span>
+    </div>`
+  ).join('');
+}
+
+// ── Claim modal (patrouille) ───────────────────────────
+function openClaimModal(num) {
+  const zone  = ZONES_DATA.find(z => z.num === num);
+  const state = zoneStates[num];
+  currentClaimZone = num;
+
+  const title = document.getElementById('claim-title');
+  const sub   = document.getElementById('claim-sub');
+  const sel   = document.getElementById('claim-patrol');
+
+  title.textContent = `Zone ${num} — ${zone.nom}`;
+
+  // Build popup content
+  let defiText = zone.defi;
+  let ptsVal   = zone.pts;
+
+  if (state && state.owner) {
+    const owner = getPatrol(state.owner);
+    const ownerName = owner ? owner.nom : '?';
+    const rDefi = state.reconqDefi || "Défi de reconquête non encore défini par l'animateur.";
+    const rPts  = state.reconqPts  || zone.pts;
+    sub.innerHTML = `⚠️ Zone tenue par <strong>${ownerName}</strong><br>
+      <em>Défi de reconquête :</em> ${rDefi}<br>
+      <strong>⭐ ${rPts} points</strong>`;
+    defiText = rDefi;
+    ptsVal   = rPts;
+  } else {
+    sub.innerHTML = `<em>${zone.defi}</em><br><strong>⭐ ${zone.pts} points</strong>`;
+  }
+
+  sel.innerHTML = PATROUILLES.map(p =>
+    `<option value="${p.id}">${p.nom}</option>`
+  ).join('');
+
+  openModal('claim-modal');
+}
+
+function submitClaim() {
+  const num     = currentClaimZone;
+  const patrol  = document.getElementById('claim-patrol').value;
+  if (!num || !patrol) return;
+
+  db.ref('zones/' + num + '/pendingPatrol').set(patrol);
+  db.ref('zones/' + num + '/pendingAt').set(Date.now());
+  closeModal('claim-modal');
+  showToast('✋ Demande envoyée ! L\'animateur va valider.');
+}
+
+// ── Admin login ────────────────────────────────────────
+function openAdminLogin() {
+  if (isAdmin) { openAdminPanel(); return; }
+  document.getElementById('login-pw').value = '';
+  document.getElementById('pw-error').style.display = 'none';
+  openModal('login-modal');
+}
+
+function checkLogin() {
+  const pw = document.getElementById('login-pw').value;
+  if (pw === adminPw) {
+    isAdmin = true;
+    closeModal('login-modal');
+    openAdminPanel();
+  } else {
+    document.getElementById('pw-error').style.display = 'block';
+  }
+}
+
+// ── Admin panel ────────────────────────────────────────
+function openAdminPanel() {
+  renderAdminPanel();
+  openModal('admin-modal');
+}
+
+function renderAdminPanel() {
+  // Scores
+  const scores = {};
+  PATROUILLES.forEach(p => scores[p.id] = 0);
+  Object.values(zoneStates).forEach(s => {
+    if (s.owner) scores[s.owner] = (scores[s.owner] || 0) + (s.pts || 0);
+  });
+  document.getElementById('admin-score').innerHTML =
+    `<h3 style="font-size:13px;font-weight:700;margin-bottom:8px">🏆 Scores</h3>` +
+    PATROUILLES.map(p =>
+      `<div class="score-row">
+        <span>${p.nom}</span>
+        <span class="score-num" style="color:${p.color}">${scores[p.id] || 0} pts</span>
+       </div>`
+    ).join('');
+
+  // Zones list
+  const list = document.getElementById('admin-zones-list');
+  list.innerHTML = '';
+
+  ZONES_DATA.forEach(z => {
+    const state    = zoneStates[z.num] || {};
+    const owner    = getPatrol(state.owner);
+    const pending  = getPatrol(state.pendingPatrol);
+    const hasReq   = !!pending;
+
+    const card = document.createElement('div');
+    card.className = 'admin-zone-card' + (hasReq ? ' has-request' : '');
+
+    let ownerBadge = '<span style="font-size:11px;color:#aaa">Libre</span>';
+    if (owner) {
+      ownerBadge = `<span class="azc-owner" style="background:${owner.color}">${owner.nom}</span>`;
+    }
+
+    let requestHtml = '';
+    if (hasReq) {
+      const ago = state.pendingAt
+        ? Math.round((Date.now() - state.pendingAt) / 1000) + 's'
+        : '';
+      requestHtml = `
+        <div class="azc-request">
+          <strong>⏳ ${pending.nom} demande cette zone (il y a ${ago})</strong>
+          <div class="azc-actions">
+            <button class="btn-validate" onclick="openValidateModal(${z.num})">✅ Valider</button>
+            <button class="btn-reject"   onclick="rejectClaim(${z.num})">✕ Refuser</button>
+          </div>
+        </div>`;
+    }
+
+    let resetBtn = owner
+      ? `<button class="btn-reset-zone" onclick="resetZone(${z.num})">↺ Remettre libre</button>`
+      : '';
+
+    card.innerHTML = `
+      <div class="azc-top">
+        <div class="azc-name">${z.num}. ${z.nom}</div>
+        ${ownerBadge}
+      </div>
+      ${requestHtml}
+      <div style="margin-top:6px">${resetBtn}</div>`;
+    list.appendChild(card);
+  });
+}
+
+// ── Validate modal ─────────────────────────────────────
+function openValidateModal(num) {
+  currentValidateZone = num;
+  const zone    = ZONES_DATA.find(z => z.num === num);
+  const state   = zoneStates[num] || {};
+  const pending = getPatrol(state.pendingPatrol);
+
+  document.getElementById('val-title').textContent =
+    `✅ Valider — Zone ${num} : ${zone.nom}`;
+  document.getElementById('val-sub').textContent =
+    `Patrouille : ${pending ? pending.nom : '?'} · Tapez le défi de reconquête (pour la prochaine patrouille qui voudra la reprendre)`;
+  document.getElementById('val-defi').value = '';
+  document.getElementById('val-pts').value  = '3';
+
+  openModal('validate-modal');
+}
+
+function confirmValidate() {
+  const num    = currentValidateZone;
+  const defi   = document.getElementById('val-defi').value.trim();
+  const pts    = parseInt(document.getElementById('val-pts').value, 10);
+  const state  = zoneStates[num] || {};
+  const zone   = ZONES_DATA.find(z => z.num === num);
+
+  if (!defi) { alert('Veuillez saisir le défi de reconquête.'); return; }
+
+  const patrol  = getPatrol(state.pendingPatrol);
+  const newPts  = pts;
+
+  db.ref('zones/' + num).update({
+    owner:        state.pendingPatrol,
+    pts:          newPts,
+    reconqDefi:   defi,
+    reconqPts:    Math.min(newPts + 1, 5),
+    pendingPatrol: null,
+    pendingAt:     null,
+  });
+
+  closeModal('validate-modal');
+  showToast(`👑 Zone ${num} attribuée à ${patrol ? patrol.nom : '?'}`);
+  setTimeout(renderAdminPanel, 400);
+}
+
+function rejectClaim(num) {
+  db.ref('zones/' + num).update({ pendingPatrol: null, pendingAt: null });
+  showToast('✕ Demande refusée');
+  setTimeout(renderAdminPanel, 400);
+}
+
+function resetZone(num) {
+  if (!confirm(`Remettre la zone ${num} comme libre ?`)) return;
+  db.ref('zones/' + num).set(null);
+  showToast(`Zone ${num} remise libre`);
+  setTimeout(renderAdminPanel, 400);
+}
+
+// ── Helpers ────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.add('hidden');
+  });
+});
+
+// Auto-launch Firebase on page load
+window.addEventListener('load', startApp);
+</script>
+</body>
+</html>
