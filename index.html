@@ -74,8 +74,7 @@ button{cursor:pointer;font-family:inherit}
 .p-troupes-title{font-size:9.5px;font-weight:700;text-transform:uppercase;color:#aaa;letter-spacing:.7px;margin-bottom:5px}
 .p-troop-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
 .p-troop-name{font-size:11px;font-weight:700}
-.p-troop-bar-wrap{flex:1;margin:0 8px;background:#eee;border-radius:10px;height:8px;overflow:hidden}
-.p-troop-bar{height:100%;border-radius:10px;transition:width .4s}
+/* troop bars removed — using dots */
 .p-troop-count{font-size:11px;font-weight:700;min-width:24px;text-align:right}
 
 .btn-claim{width:100%;margin-top:6px;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;color:#fff;transition:opacity .2s}
@@ -610,14 +609,14 @@ function openClaimModal(num) {
   if (state.troops && Object.keys(state.troops).length > 0) {
     const maxT = Math.max(...Object.values(state.troops));
     troopsHtml = `<div class="p-troupes" style="margin-bottom:10px">
-      <div class="p-troupes-title">🪖 Troupes présentes</div>` +
+      <div class="p-troupes-title">👥 Troupes présentes</div>` +
       Object.entries(state.troops).map(([pid, count]) => {
         const p = getPatrol(pid);
         if (!p || count === 0) return '';
-        const pct = maxT > 0 ? (count/maxT*100) : 0;
-        return `<div class="p-troop-row">
-          <span class="p-troop-name" style="color:${p.color}">${p.nom}</span>
-          <div class="p-troop-bar-wrap"><div class="p-troop-bar" style="width:${pct}%;background:${p.color}"></div></div>
+        const dots = Array(count).fill(`<span style="color:${p.color};font-size:16px;line-height:1">●</span>`).join(' ');
+        return `<div class="p-troop-row" style="margin-bottom:5px">
+          <span class="p-troop-name" style="color:${p.color};min-width:72px">${p.nom}</span>
+          <span style="flex:1;letter-spacing:2px">${dots}</span>
           <span class="p-troop-count" style="color:${p.color}">${count}</span>
         </div>`;
       }).join('') + `</div>`;
