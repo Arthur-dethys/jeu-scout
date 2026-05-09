@@ -589,9 +589,9 @@ function updateScorebar() {
     }
   });
   const bar = document.getElementById('scorebar');
-  bar.innerHTML = PATROUILLES.map(p =>
+  bar.innerHTML = [...PATROUILLES].sort((a,b) => (totals[b.id]||0) - (totals[a.id]||0)).map(p =>
     `<div class="score-pill" style="color:${p.color};border-color:${p.color}">
-      ${p.nom} <span style="color:${p.color}">${totals[p.id]} 🪖</span>
+      ${p.nom} <span style="color:${p.color}">${totals[p.id]} 👤</span>
     </div>`
   ).join('');
 }
@@ -622,7 +622,7 @@ function openClaimModal(num) {
       }).join('') + `</div>`;
   }
 
-  let defiHtml = `<em>${zone.defi}</em><br><strong>🪖 ${zone.pts} troupes</strong>`;
+  let defiHtml = `<em>${zone.defi}</em><br><strong>👤 ${zone.pts} troupes</strong>`;
   if (state.reconqDefi) {
     defiHtml = `<em>${state.reconqDefi}</em>`;
   }
@@ -682,11 +682,11 @@ function renderAdminPanel() {
     }
   });
   document.getElementById('admin-score').innerHTML =
-    `<h3 style="font-size:13px;font-weight:700;margin-bottom:8px">🪖 Troupes totales</h3>` +
+    `<h3 style="font-size:13px;font-weight:700;margin-bottom:8px">👤 Troupes totales</h3>` +
     PATROUILLES.map(p =>
       `<div class="score-row">
         <span>${p.nom}</span>
-        <span class="score-num" style="color:${p.color}">${totals[p.id] || 0} 🪖</span>
+        <span class="score-num" style="color:${p.color}">${totals[p.id] || 0} 🏆</span>
        </div>`
     ).join('');
 
@@ -703,7 +703,7 @@ function renderAdminPanel() {
     card.className = 'admin-zone-card' + (pending ? ' has-request' : '');
 
     let ownerBadge = '<span style="font-size:11px;color:#aaa">Libre</span>';
-    if (domP) ownerBadge = `<span class="azc-owner" style="background:${domP.color}">${domP.nom} (${dom.count}🪖)</span>`;
+    if (domP) ownerBadge = `<span class="azc-owner" style="background:${domP.color}">${domP.nom} (${dom.count}👤)</span>`;
     if (state.locked) ownerBadge += ' <span style="font-size:10px;color:#e74c3c">🔒</span>';
 
     let requestHtml = '';
@@ -775,7 +775,7 @@ function confirmValidate() {
   db.ref('zones/' + num).update(update);
 
   closeModal('validate-modal');
-  showToast(`🪖 +${troops} troupes pour ${patrol ? patrol.nom : '?'} !`);
+  showToast(`👤 +${troops} troupes pour ${patrol ? patrol.nom : '?'} !`);
   setTimeout(renderAdminPanel, 400);
 }
 
