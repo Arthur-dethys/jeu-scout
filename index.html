@@ -449,7 +449,8 @@ function initMap() {
         font-size:11px;font-weight:800;padding:2px 6px;border-radius:4px;
         border:1.5px solid rgba(255,255,255,.65);box-shadow:0 1px 4px rgba(0,0,0,.3);
         white-space:nowrap;text-align:center;line-height:1.35;transition:background .4s;">
-        ${z.num}<br><span style="font-size:9px;font-weight:500">${z.nom.split('/')[0].trim()}</span>
+        ${z.num} <span id="zone-status-${z.num}" style="font-size:10px"></span><br>
+        <span style="font-size:9px;font-weight:500">${z.nom.split('/')[0].trim()}</span>
       </div>`,
       iconAnchor:[30,18], iconSize:[60,36]
     })}).addTo(mapInstance);
@@ -559,6 +560,20 @@ function refreshPolyStyle(num) {
   if (state && state.pendingPatrol) {
     poly.setStyle({ dashArray:'8 5', weight:3.5 });
     if (labelEl) labelEl.style.background = '#E67E22';
+  }
+
+  // Status icon on label
+  const statusEl = document.getElementById('zone-status-' + num);
+  if (statusEl) {
+    if (state && state.locked) {
+      statusEl.textContent = '🔒';
+    } else if (state && state.reconqDefi) {
+      statusEl.textContent = '⚔️';
+    } else if (dominant) {
+      statusEl.textContent = '🏳️';
+    } else {
+      statusEl.textContent = '';
+    }
   }
 }
 
@@ -726,11 +741,21 @@ function renderAdminPanel() {
     }
 
     let resetBtn = dom ? `<button class="btn-reset-zone" onclick="resetZone(${z.num})">↺ Remettre libre</button>` : '';
+    let editDefiBtn = (state.reconqDefi || state.locked !== undefined)
+      ? `<button class="btn-reset-zone" style="margin-left:6px" onclick="editReconqDefi(${z.num})">✏️ Modifier défi</button>`
+      : '';
+
+    const currentDefi = state.locked
+      ? '<span style="color:#e74c3c;font-size:11px">🔒 Zone verrouillée</span>'
+      : state.reconqDefi
+        ? `<div style="font-size:11px;color:#555;margin-top:5px;font-style:italic">"${state.reconqDefi}"</div>`
+        : '';
 
     card.innerHTML = `
       <div class="azc-top"><div class="azc-name">${z.num}. ${z.nom}</div>${ownerBadge}</div>
+      ${currentDefi}
       ${requestHtml}
-      <div style="margin-top:6px">${resetBtn}</div>`;
+      <div style="margin-top:6px">${resetBtn}${editDefiBtn}</div>`;
     list.appendChild(card);
   });
 }
@@ -796,6 +821,38 @@ function resetZone(num) {
   if (!confirm(`Remettre la zone ${num} comme libre (efface toutes les troupes) ?`)) return;
   db.ref('zones/' + num).set(null);
   showToast(`Zone ${num} remise libre`);
+  setTimeout(renderAdminPanel, 400);
+}
+
+// ── Edit reconquest defi ──────────────────────────────
+function editReconqDefi(num) {
+  const zone  = ZONES_DATA.find(z => z.num === num);
+  const state = zoneStates[num] || {};
+  const current = state.reconqDefi || '';
+  const locked  = state.locked;
+
+  const choice = locked
+    ? confirm(`Zone ${num} est verrouillée 🔒\nCliquez OK pour la déverrouiller et saisir un nouveau défi de reconquête.\nCliquez Annuler pour ne rien changer.`)
+    : true;
+
+  if (!choice) return;
+
+  const newDefi = prompt(
+    `Défi de reconquête pour Zone ${num} — ${zone.nom}\n(laissez vide et validez pour verrouiller la zone)`,
+    current
+  );
+
+  if (newDefi === null) return; // cancelled
+
+  if (newDefi.trim() === '') {
+    if (confirm('Aucun défi saisi — voulez-vous verrouiller la zone ? (ne pourra plus être reconquise)')) {
+      db.ref('zones/' + num).update({ reconqDefi: null, locked: true });
+      showToast(`Zone ${num} verrouillée 🔒`);
+    }
+  } else {
+    db.ref('zones/' + num).update({ reconqDefi: newDefi.trim(), locked: null });
+    showToast(`✏️ Défi de reconquête mis à jour !`);
+  }
   setTimeout(renderAdminPanel, 400);
 }
 
