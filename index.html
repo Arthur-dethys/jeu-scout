@@ -390,6 +390,7 @@ let zoneStates = {};
 let mapLayers = {};
 let currentClaimZone = null;
 let currentValidateZone = null;
+let currentValidateKey  = null;
 let mapInstance = null;
 
 // ── Firebase ───────────────────────────────────────────
@@ -449,8 +450,7 @@ function initMap() {
         font-size:11px;font-weight:800;padding:2px 6px;border-radius:4px;
         border:1.5px solid rgba(255,255,255,.65);box-shadow:0 1px 4px rgba(0,0,0,.3);
         white-space:nowrap;text-align:center;line-height:1.35;transition:background .4s;">
-        ${z.num} <span id="zone-status-${z.num}" style="font-size:10px"></span><br>
-        <span style="font-size:9px;font-weight:500">${z.nom.split('/')[0].trim()}</span>
+        ${z.num}<br><span style="font-size:9px;font-weight:500">${z.nom.split('/')[0].trim()}</span>
       </div>`,
       iconAnchor:[30,18], iconSize:[60,36]
     })}).addTo(mapInstance);
@@ -557,23 +557,10 @@ function refreshPolyStyle(num) {
     if (labelEl) labelEl.style.background = '#95A5A6';
   }
 
-  if (state && state.pendingPatrol) {
+  const queue = state && state.queue ? Object.values(state.queue) : [];
+  if (queue.length > 0) {
     poly.setStyle({ dashArray:'8 5', weight:3.5 });
     if (labelEl) labelEl.style.background = '#E67E22';
-  }
-
-  // Status icon on label
-  const statusEl = document.getElementById('zone-status-' + num);
-  if (statusEl) {
-    if (state && state.locked) {
-      statusEl.textContent = '🔒';
-    } else if (state && state.reconqDefi) {
-      statusEl.textContent = '⚔️';
-    } else if (dominant) {
-      statusEl.textContent = '🏳️';
-    } else {
-      statusEl.textContent = '';
-    }
   }
 }
 
@@ -661,9 +648,871 @@ function submitClaim() {
   const num    = currentClaimZone;
   const patrol = document.getElementById('claim-patrol').value;
   if (!num || !patrol) return;
-  db.ref('zones/' + num).update({ pendingPatrol: patrol, pendingAt: Date.now() });
+  db.ref('zones/' + num + '/queue').push({ patrol, at: Date.now() });
   closeModal('claim-modal');
-  showToast('✋ Demande envoyée ! L\'animateur va valider.');
+  showToast('✋ Demande envoyée ! L'animateur va valider.');
+}
+
+// ── Admin login ────────────────────────────────────────
+function openAdminLogin() {
+  if (isAdmin) { openAdminPanel(); return; }
+  document.getElementById('login-pw').value = '';
+  document.getElementById('pw-error').style.display = 'none';
+  openModal('login-modal');
+}
+function checkLogin() {
+  if (document.getElementById('login-pw').value === adminPw) {
+    isAdmin = true;
+    closeModal('login-modal');
+    openAdminPanel();
+  } else {
+    document.getElementById('pw-error').style.display = 'block';
+  }
+}
+
+// ── Admin panel ────────────────────────────────────────
+function openAdminPanel() { renderAdminPanel(); openModal('admin-modal'); }
+
+function renderAdminPanel() {
+  // Scores
+  const totals = {};
+  PATROUILLES.forEach(p => totals[p.id] = 0);
+  Object.values(zoneStates).forEach(s => {
+    if (s.troops) for (const [pid, c] of Object.entries(s.troops)) {
+      if (totals[pid] !== undefined) totals[pid] += c;
+    }
+  });
+  document.getElementById('admin-score').innerHTML =
+    `<h3 style="font-size:13px;font-weight:700;margin-bottom:8px">👤 Zones conquises</h3>` +
+    (() => {
+      const dz = {};
+      PATROUILLES.forEach(p => dz[p.id] = 0);
+      Object.keys(zoneStates).forEach(num => {
+        const dom = getDominant(num);
+        if (dom && dz[dom.id] !== undefined) dz[dom.id]++;
+      });
+      return [...PATROUILLES].sort((a,b) => (dz[b.id]||0) - (dz[a.id]||0)).map(p =>
+        `<div class="score-row">
+          <span>${p.nom}</span>
+          <span class="score-num" style="color:${p.color}">${dz[p.id] || 0} zones</span>
+         </div>`
+      ).join('');
+    })()
+
+  // Zones
+  const list = document.getElementById('admin-zones-list');
+  list.innerHTML = '';
+  ZONES_DATA.forEach(z => {
+        const state   = zoneStates[z.num] || {};
+    const queue   = state.queue
+      ? Object.entries(state.queue).sort((a,b) => a[1].at - b[1].at)
+      : [];
+    const dom     = getDominant(z.num);
+    const domP    = dom ? getPatrol(dom.id) : null;
+
+    const card = document.createElement('div');
+    card.className = 'admin-zone-card' + (queue.length > 0 ? ' has-request' : '');
+
+    let ownerBadge = '<span style="font-size:11px;color:#aaa">Libre</span>';
+    if (domP) ownerBadge = `<span class="azc-owner" style="background:${domP.color}">${domP.nom} (${dom.count}👤)</span>`;
+    if (state.locked) ownerBadge += ' <span style="font-size:10px;color:#e74c3c">🔒</span>';
+
+    let requestHtml = '';
+    if (queue.length > 0) {
+      const rows = queue.map(([key, req], i) => {
+        const p   = getPatrol(req.patrol);
+        const ago = Math.round((Date.now() - req.at) / 1000);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;
+          margin-top:5px;padding:5px 8px;
+          background:${i===0 ? 'rgba(39,174,96,.12)' : 'rgba(0,0,0,.04)'};
+          border-radius:6px;gap:6px;flex-wrap:wrap">
+          <span style="font-weight:700;color:${p ? p.color : '#555'}">${i+1}. ${p ? p.nom : '?'}</span>
+          <span style="font-size:10px;color:#aaa">il y a ${ago}s</span>
+          <div style="display:flex;gap:5px">
+            ${i===0 ? `<button class="btn-validate" onclick="openValidateModal(${z.num},'${key}')">✅ Valider</button>` : ''}
+            <button class="btn-reject" onclick="rejectClaim(${z.num},'${key}')">✕</button>
+          </div>
+        </div>`;
+      }).join('');
+      requestHtml = `<div class="azc-request">
+        <strong>⏳ ${queue.length} demande(s)</strong>${rows}
+      </div>`;
+    }
+
+    let resetBtn = dom ? `<button class="btn-reset-zone" onclick="resetZone(${z.num})">↺ Remettre libre</button>` : '';
+
+    card.innerHTML = `
+      <div class="azc-top"><div class="azc-name">${z.num}. ${z.nom}</div>${ownerBadge}</div>
+      ${requestHtml}
+      <div style="margin-top:6px">${resetBtn}</div>`;
+    list.appendChild(card);
+  });
+}
+
+// ── Validate modal ─────────────────────────────────────
+function openValidateModal(num, queueKey) {
+  currentValidateZone = num;
+  currentValidateKey  = queueKey || null;
+  const zone    = ZONES_DATA.find(z => z.num === num);
+  const state   = zoneStates[num] || {};
+  const queue   = state.queue ? Object.entries(state.queue).sort((a,b) => a[1].at - b[1].at) : [];
+  const req     = queueKey ? (state.queue[queueKey] || {}) : (queue[0] ? queue[0][1] : {});
+  const pending = getPatrol(req.patrol);
+
+  document.getElementById('val-title').textContent = `✅ Valider — Zone ${num} : ${zone.nom}`;
+  document.getElementById('val-sub').textContent   = `Patrouille : ${pending ? pending.nom : '?'}`;
+  document.getElementById('val-troops').value      = String(zone.pts);
+  document.getElementById('val-defi').value        = '';
+  document.getElementById('no-defi-check').checked = false;
+  document.getElementById('val-defi').disabled     = false;
+  document.getElementById('val-defi').style.opacity = '1';
+  openModal('validate-modal');
+}
+
+function toggleDefiField() {
+  const locked = document.getElementById('no-defi-check').checked;
+  const ta     = document.getElementById('val-defi');
+  ta.disabled     = locked;
+  ta.style.opacity = locked ? '.4' : '1';
+  if (locked) ta.value = '';
+}
+
+function confirmValidate() {
+  const num    = currentValidateZone;
+  const troops = parseInt(document.getElementById('val-troops').value, 10);
+  const locked = document.getElementById('no-defi-check').checked;
+  const defi   = document.getElementById('val-defi').value.trim();
+  const state  = zoneStates[num] || {};
+
+  if (!locked && !defi) { alert('Saisissez un défi de reconquête, ou cochez "pas de défi".'); return; }
+
+  // Find the request in queue
+  const queue = state.queue ? Object.entries(state.queue).sort((a,b) => a[1].at - b[1].at) : [];
+  const [qKey, req] = currentValidateKey && state.queue && state.queue[currentValidateKey]
+    ? [currentValidateKey, state.queue[currentValidateKey]]
+    : (queue[0] || [null, {}]);
+
+  if (!req || !req.patrol) { alert('Aucune demande trouvée.'); return; }
+
+  const patrol = getPatrol(req.patrol);
+  const currentTroops = (state.troops && state.troops[req.patrol]) || 0;
+
+  const update = {
+    [`troops/${req.patrol}`]: currentTroops + troops,
+    locked: locked ? true : null,
+    reconqDefi: locked ? null : defi,
+  };
+  db.ref('zones/' + num).update(update);
+
+  // Remove this request from queue
+  if (qKey) db.ref('zones/' + num + '/queue/' + qKey).remove();
+
+  closeModal('validate-modal');
+  showToast(`👤 +${troops} troupes pour ${patrol ? patrol.nom : '?'} !`);
+  setTimeout(renderAdminPanel, 400);
+}
+
+function rejectClaim(num, queueKey) {
+  if (queueKey) {
+    db.ref('zones/' + num + '/queue/' + queueKey).remove();
+  } else {
+    // Remove first in queue
+    const state = zoneStates[num] || {};
+    const queue = state.queue ? Object.entries(state.queue).sort((a,b) => a[1].at - b[1].at) : [];
+    if (queue[0]) db.ref('zones/' + num + '/queue/' + queue[0][0]).remove();
+  }
+  showToast('✕ Demande refusée');
+  setTimeout(renderAdminPanel, 400);
+}
+
+function resetZone(num) {
+  if (!confirm(`Remettre la zone ${num} comme libre (efface toutes les troupes) ?`)) return;
+  db.ref('zones/' + num).set(null);
+  showToast(`Zone ${num} remise libre`);
+  setTimeout(renderAdminPanel, 400);
+}
+
+// ── Helpers ────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target===o) o.classList.add('hidden'); });
+});
+window.addEventListener('load', startApp);
+</script>
+</body>
+</html  const queueForStatus = state && state.queue ? Object.values(state.queue) : [];
+  if (statusEl) {
+    if (state && state.locked) {
+      statusEl.textContent = '🔒';
+    } else if (queueForStatus.length > 0) {
+      statusEl.textContent = `⏳${queueForStatus.length > 1 ? queueForStatus.length : ''}`;
+    } else if (state && state.reconqDefi) {
+      statusEl.textContent = '⚔️';
+    } else if (dominant) {
+      statusEl.textContent = '🏳️';
+    } else {
+      statusEl.textContent = '';
+    }
+  }CTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redorer le blason de Eddy Merckx</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e}
+button{cursor:pointer;font-family:inherit}
+
+#app{display:flex;flex-direction:column;height:100vh}
+.header{
+  background:#1a1a2e;color:#fff;
+  padding:10px 16px;display:flex;align-items:center;
+  justify-content:space-between;gap:12px;flex-shrink:0;
+  position:relative;z-index:500;
+}
+.header h1{font-size:15px;font-weight:700}
+.header .sub{font-size:10px;opacity:.65;margin-top:1px}
+.header-right{display:flex;gap:8px;align-items:center}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:#e74c3c;transition:background .4s;flex-shrink:0}
+.conn-dot.online{background:#2ecc71}
+.btn-admin{background:rgba(255,255,255,.12);color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600}
+.btn-admin:hover{background:rgba(255,255,255,.22)}
+
+#map{flex:1;width:100%}
+
+/* ── Scorebar ── */
+.scorebar{background:#fff;border-top:2px solid #eee;display:flex;overflow-x:auto;flex-shrink:0;padding:6px 10px;gap:10px}
+.score-pill{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;border:2px solid;flex-shrink:0}
+
+/* ── Legend — collapsible ── */
+.legend{
+  background:#fff;border:1.5px solid #ddd;border-radius:8px;
+  font-size:10.5px;box-shadow:0 2px 8px rgba(0,0,0,.12);
+  overflow:hidden;min-width:140px;
+}
+.legend-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 10px;cursor:pointer;user-select:none;
+  border-bottom:1px solid #eee;
+  font-weight:700;font-size:11px;
+}
+.legend-header:hover{background:#f8f8f8}
+.legend-toggle{font-size:12px;color:#888;transition:transform .25s}
+.legend-toggle.collapsed{transform:rotate(-90deg)}
+.legend-body{max-height:38vh;overflow-y:auto;padding:4px 0;transition:max-height .3s}
+.legend-body.hidden{max-height:0;padding:0}
+.legend-row{display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 10px;line-height:1.9}
+.legend-row:hover{font-weight:700;background:#f5f5f5}
+.legend-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0;border:1px solid rgba(0,0,0,.15)}
+.legend-crown{font-size:10px;margin-left:2px}
+
+/* ── Popups ── */
+.leaflet-popup-content-wrapper{border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.18);min-width:270px;max-width:340px;padding:0;overflow:hidden}
+.leaflet-popup-content{margin:0;padding:0}
+.leaflet-popup-tip-container{display:none}
+.p-head{padding:12px 15px 9px;color:#fff}
+.p-num{font-size:10px;font-weight:700;opacity:.8;text-transform:uppercase;letter-spacing:.8px}
+.p-nom{font-size:15px;font-weight:700;margin:1px 0}
+.p-body{padding:11px 15px 14px}
+.p-defi{font-size:12px;line-height:1.65;color:#222;margin-bottom:10px}
+
+/* Troupes display in popup */
+.p-troupes{margin-bottom:10px}
+.p-troupes-title{font-size:9.5px;font-weight:700;text-transform:uppercase;color:#aaa;letter-spacing:.7px;margin-bottom:5px}
+.p-troop-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+.p-troop-name{font-size:11px;font-weight:700}
+/* troop bars removed — using dots */
+.p-troop-count{font-size:11px;font-weight:700;min-width:24px;text-align:right}
+
+.btn-claim{width:100%;margin-top:6px;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;color:#fff;transition:opacity .2s}
+.btn-claim:hover{opacity:.88}
+
+/* ── Modals ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:2000;padding:16px}
+.modal-overlay.hidden{display:none}
+.modal{background:#fff;border-radius:14px;padding:24px 26px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3)}
+.modal h2{font-size:17px;font-weight:700;margin-bottom:3px}
+.modal .modal-sub{font-size:12px;color:#888;margin-bottom:18px}
+.modal label{font-size:12px;font-weight:600;color:#444;display:block;margin-bottom:4px}
+.modal input,.modal textarea,.modal select{width:100%;border:1.5px solid #ddd;border-radius:7px;padding:8px 11px;font-size:13px;margin-bottom:14px;font-family:inherit;transition:border .2s}
+.modal input:focus,.modal textarea:focus,.modal select:focus{outline:none;border-color:#3498db}
+.modal textarea{resize:vertical;min-height:80px}
+.modal-btns{display:flex;gap:10px}
+.btn-confirm{flex:1;background:#27ae60;color:#fff;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:700}
+.btn-confirm:hover{background:#219a52}
+.btn-cancel{background:#f0f2f5;color:#555;border:none;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:600}
+.btn-cancel:hover{background:#e0e2e5}
+.modal .pw-row{display:flex;gap:8px}
+.modal .pw-row input{flex:1;margin-bottom:0}
+.modal .pw-row button{background:#1a1a2e;color:#fff;border:none;padding:8px 14px;border-radius:7px;font-size:13px;font-weight:600;white-space:nowrap}
+.pw-error{color:#e74c3c;font-size:11.5px;margin-top:6px;display:none}
+
+/* ── Admin ── */
+.admin-header{background:#1a1a2e;color:#fff;padding:14px 18px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center}
+.admin-header h2{font-size:16px;font-weight:700;margin:0}
+.btn-close-admin{background:rgba(255,255,255,.12);color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px}
+.btn-close-admin:hover{background:rgba(255,255,255,.22)}
+.admin-body{padding:16px 18px}
+.admin-zone-card{border:1.5px solid #eee;border-radius:9px;padding:11px 14px;margin-bottom:10px;transition:border .2s}
+.admin-zone-card:hover{border-color:#bbb}
+.admin-zone-card.has-request{border-color:#e67e22;background:#fffbf5}
+.azc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.azc-name{font-size:13px;font-weight:700}
+.azc-owner{font-size:11px;color:#fff;padding:2px 9px;border-radius:20px;font-weight:700;white-space:nowrap}
+.azc-request{margin-top:8px;background:#fff3e0;border-radius:7px;padding:8px 11px;font-size:12px;color:#a04000}
+.azc-request strong{display:block;margin-bottom:4px}
+.azc-actions{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+.btn-validate{background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700}
+.btn-validate:hover{background:#219a52}
+.btn-reject{background:#e74c3c;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700}
+.btn-reject:hover{background:#c0392b}
+.btn-reset-zone{background:#f0f2f5;color:#555;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600}
+.btn-reset-zone:hover{background:#e0e2e5}
+.admin-score{background:#f8f9fa;border-radius:9px;padding:12px 14px;margin-bottom:14px}
+.admin-score h3{font-size:13px;font-weight:700;margin-bottom:8px}
+.score-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;font-size:13px}
+.score-num{font-weight:700;font-size:16px}
+
+/* no-defi checkbox */
+.no-defi-row{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;color:#555}
+.no-defi-row input[type=checkbox]{width:auto;margin:0}
+
+.zone-lbl{background:transparent;border:none;box-shadow:none;pointer-events:none}
+
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:3000;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+
+@media(max-width:480px){
+  .modal{padding:18px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div>
+      <h1>Redorer le blason de Eddy Merckx</h1>
+      <div class="sub">Touchez une zone pour voir le défi · <span id="conn-label">Connexion…</span></div>
+    </div>
+    <div class="header-right">
+      <div class="conn-dot" id="conn-dot"></div>
+      <button class="btn-admin" onclick="openAdminLogin()">🔐 Animateur</button>
+    </div>
+  </div>
+  <div id="map"></div>
+  <div class="scorebar" id="scorebar"></div>
+</div>
+
+<!-- Claim modal -->
+<div class="modal-overlay hidden" id="claim-modal">
+  <div class="modal">
+    <h2 id="claim-title">Conquérir la zone</h2>
+    <p class="modal-sub" id="claim-sub"></p>
+    <label>Votre patrouille</label>
+    <select id="claim-patrol"></select>
+    <p style="font-size:12px;color:#888;margin-top:-10px;margin-bottom:14px">⏳ Un animateur devra valider votre conquête.</p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('claim-modal')">Annuler</button>
+      <button class="btn-confirm" onclick="submitClaim()">Demander la validation ✋</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin login -->
+<div class="modal-overlay hidden" id="login-modal">
+  <div class="modal">
+    <h2>🔐 Espace animateur</h2>
+    <p class="modal-sub">Entrez le mot de passe</p>
+    <label>Mot de passe</label>
+    <div class="pw-row">
+      <input id="login-pw" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')checkLogin()"/>
+      <button onclick="checkLogin()">Entrer</button>
+    </div>
+    <div class="pw-error" id="pw-error">Mot de passe incorrect</div>
+    <br>
+    <button class="btn-cancel" style="width:100%" onclick="closeModal('login-modal')">Annuler</button>
+  </div>
+</div>
+
+<!-- Admin panel -->
+<div class="modal-overlay hidden" id="admin-modal">
+  <div class="modal" style="padding:0;max-width:520px">
+    <div class="admin-header">
+      <h2>🎯 Tableau de bord animateur</h2>
+      <button class="btn-close-admin" onclick="closeModal('admin-modal')">✕ Fermer</button>
+    </div>
+    <div class="admin-body">
+      <div class="admin-score" id="admin-score"></div>
+      <h3 style="font-size:13px;font-weight:700;margin-bottom:10px">Zones & demandes en attente</h3>
+      <div id="admin-zones-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Validate modal -->
+<div class="modal-overlay hidden" id="validate-modal">
+  <div class="modal">
+    <h2 id="val-title">Valider la conquête</h2>
+    <p class="modal-sub" id="val-sub"></p>
+    <label>Troupes gagnées par la patrouille pour cette zone</label>
+    <select id="val-troops">
+      <option value="1">1 troupe</option>
+      <option value="2">2 troupes</option>
+      <option value="3" selected>3 troupes</option>
+      <option value="4">4 troupes</option>
+      <option value="5">5 troupes</option>
+    </select>
+    <label>Défi de reconquête <span style="color:#aaa;font-weight:400">(optionnel)</span></label>
+    <div class="no-defi-row">
+      <input type="checkbox" id="no-defi-check" onchange="toggleDefiField()"/>
+      <label for="no-defi-check" style="display:inline;font-weight:400;color:#555">Pas de défi de reconquête — la zone ne peut plus être reprise</label>
+    </div>
+    <textarea id="val-defi" rows="3" placeholder="Ex: Chantez une chanson en canon pendant 30 secondes…"></textarea>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('validate-modal')">Annuler</button>
+      <button class="btn-confirm" onclick="confirmValidate()">✅ Valider & publier</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════
+//  ▼▼▼  DONNÉES DES ZONES — MODIFIEZ ICI  ▼▼▼
+// ════════════════════════════════════════════════════════
+const ZONES_DATA = [
+  {
+    num: 1, nom: "Tom Boonen",
+    color: "#9B59B6", pts: 1,
+    defi: "Photographiez 4 détails architecturaux différents sur les façades du quartier (gargouille, millésime, enseigne ancienne, fer forgé…). Chaque détail = 1 pt bonus. Envoyez les photos quand vous avez finis à votre chef réferent sur WhatsApp",
+    coords: [[50.8489,4.4050],[50.8489,4.4200],[50.8430,4.4200],[50.8430,4.4050]]
+  },
+  {
+    num: 2, nom: "Remcoooo",
+    color: "#1ABC9C", pts: 1,
+    defi: "Faire un film d'une course a vélo de 1min, ça doit être réaliste sinon pas de points ! Envoyez la vidéo à votre chef réferent sur WhatsApp.",
+    coords: [[50.8430,4.4050],[50.8430,4.4200],[50.8370,4.4200],[50.8370,4.4050]]
+  },
+  {
+    num: 3, nom: "Joseph Laffont",
+    color: "#E74C3C", pts: 1,
+    defi: "Faites un 58 par terre à l'aide des membres de votre patrouille, et envoyez une photo à votre chef référent sur WhatsApp.",
+    coords: [[50.8489,4.4200],[50.8489,4.4350],[50.8430,4.4350],[50.8430,4.4200]]
+  },
+  {
+    num: 4, nom: "Ptit-dej Pogaçar",
+    color: "#D35400", pts: 1,
+    defi: "Faire une photo de patrouille avec 3 fiats différentes. Envoyez les photos à votre chef référent sur WhatsApp.",
+    coords: [[50.8430,4.4200],[50.8430,4.4350],[50.8370,4.4350],[50.8370,4.4200]]
+  },
+  {
+    num: 5, nom: "Maxime Chantraine",
+    color: "#F39C12", pts: 1,
+    defi: "Sans carte ni téléphone, reproduisez le contour de WSP au sol avec des brindilles et placez 2 lieux importants. Envoyez les photos à votre chef référent sur WhatsApp. ",
+    coords: [[50.8489,4.4350],[50.8489,4.4530],[50.8430,4.4530],[50.8430,4.4350]]
+  },
+  {
+    num: 6, nom: "Colin Descamps",
+    color: "#8E44AD", pts: 1,
+    defi: "Demandez à 3 passants : « Votre chose préférée à WSP ? ». Notez les réponses et présentez un TOP 3 commenté. Envoyez la vidéo à votre chef référent sur WhatsApp",
+    coords: [[50.8489,4.4530],[50.8489,4.4700],[50.8430,4.4700],[50.8430,4.4530]]
+  },
+  {
+    num: 11, nom: "Wout Van-Roubaix",
+    color: "#16A085", pts: 1,
+    defi: "Trouvez le grand panneau de Paris-Roubaix.",
+    coords: [[50.8310,4.4050],[50.8310,4.4200],[50.8250,4.4200],[50.8250,4.4050]]
+  },
+  {
+    num: 8, nom: "Arnaud Deli-Traiteur",
+    color: "#E67E22", pts: 1,
+    defi: "Faites un rap de 1min30 sur Woluwe-Saint-Pierre, envoyez la vidéo à votre chef référent sur WhatsApp",
+    coords: [[50.8370,4.4350],[50.8370,4.4530],[50.8310,4.4530],[50.8310,4.4350]]
+  },
+  {
+    num: 9, nom: "Tom Pied de Coq",
+    color: "#27AE60", pts: 1,
+    defi: "Faites une photo de patrouille créative devant la piste détruite de Sportcity. Point bonus pour la créativité. Envoyez la photo à votre chef référent sur WhatsApp.",
+    coords: [[50.8370,4.4530],[50.8370,4.4700],[50.8310,4.4700],[50.8310,4.4530]]
+  },
+  {
+    num: 10, nom: "Julian Pas Philippe",
+    color: "#2980B9", pts: 1,
+    defi: "Un membre imite un monument de WSP. Les autres devinent en max 3 tentatives. Chaque membre joue une statue différente. Envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8310,4.4200],[50.8310,4.4350],[50.8250,4.4350],[50.8250,4.4200]]
+  },
+  {
+    num: 21, nom: "Square Eddy Merckx",
+    color: "#FFD700", pts: 1,
+    defi: "Faire un reportage éclair du square Eddy Merckx de 1min, envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8250,4.4050],[50.8250,4.4200],[50.8190,4.4200],[50.8190,4.4050]]
+  },
+  {
+    num: 7, nom: "Baden Powell",
+    color: "#3498DB", pts: 1,
+    defi: "Faire un film sur les lectures de Baden Powell dans le parc, de au moins 1min. Envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8370,4.4200],[50.8370,4.4350],[50.8310,4.4350],[50.8310,4.4200]]
+  },
+  {
+    num: 12, nom: "Mathieu van der Etang",
+    color: "#1ABC9C", pts: 1,
+    defi: "Faire une pyramide humaine de la patrouille devant les étangs. Envoyez la photo à votre chef référent sur WhatsApp",
+    coords: [[50.8310,4.4350],[50.8310,4.4530],[50.8250,4.4530],[50.8250,4.4350]]
+  },
+  {
+    num: 13, nom: "Lance Pas So Strong",
+    color: "#C0392B", pts: 1,
+    defi: "Faire une course de 400m de patrouille sur l'avenue des grand prix. Envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8310,4.4530],[50.8310,4.4700],[50.8250,4.4700],[50.8250,4.4530]]
+  },
+  {
+    num: 14, nom: "Isaac Taureau",
+    color: "#E74C3C", pts: 1,
+    defi: "Mimez une scène de voyage en tram pendant 60 sec SANS un mot. Un passant doit deviner en max 3 tentatives. Envoyez les vidéos à votre chef référent sur WhatsApp.",
+    coords: [[50.8250,4.4200],[50.8250,4.4350],[50.8190,4.4350],[50.8190,4.4200]]
+  },
+  {
+    num: 15, nom: "Philippe Prins",
+    color: "#7F8C8D", pts: 1,
+    defi: "Faites une vidéo en mode agent immobilier d'une maison de la rue. Envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8250,4.4350],[50.8250,4.4530],[50.8190,4.4530],[50.8190,4.4350]]
+  },
+  {
+    num: 16, nom: "Mich le dwich",
+    color: "#9B59B6", pts: 1,
+    defi: "Envoyez une vidéo d'un scout qui raconte une bonne vanne, et la patrouille rigole. Envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8250,4.4530],[50.8250,4.4700],[50.8190,4.4700],[50.8190,4.4530]]
+  },
+  {
+    num: 17, nom: "O'tacos",
+    color: "#27AE60", pts: 1,
+    defi: "Ecrivez le meilleur combo O'tacos et faites une pub de ce tacos devant le O'tacos. Envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8190,4.4050],[50.8190,4.4280],[50.8130,4.4280],[50.8130,4.4050]]
+  },
+  {
+    num: 18, nom: "Le gaufre",
+    color: "#2980B9", pts: 1,
+    defi: "Faites une vidéo d'un abordage, points bonus pour la créativité. Envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8190,4.4280],[50.8190,4.4530],[50.8130,4.4530],[50.8130,4.4280]]
+  },
+  {
+    num: 19, nom: "Aloys Leboutte",
+    color: "#E67E22", pts: 1,
+    defi: "Prendre un selfie avec le panneau de l'arrêt de tram TIR AUX PIGEONS, avec la patrouille au complet. envoyez la photo à votre chef référent sur WhatsApp.",
+    coords: [[50.8190,4.4530],[50.8190,4.4700],[50.8130,4.4700],[50.8130,4.4530]]
+  },
+  {
+    num: 20, nom: "Jules Vanhavre",
+    color: "#2ECC71", pts: 1,
+    defi: "Faites les signalisateurs pour les voitures (les autres membres de la patrouille). Envoyez la vidéo à votre chef référent sur WhatsApp.",
+    coords: [[50.8130,4.4050],[50.8130,4.4280],[50.8070,4.4280],[50.8070,4.4050]]
+  },
+];
+
+// ════════════════════════════════════════════════════════
+//  ▼▼▼  NOMS DES PATROUILLES — MODIFIEZ ICI  ▼▼▼
+// ════════════════════════════════════════════════════════
+const PATROUILLES = [
+  { id:"p1", nom:"Cobras",    color:"#E74C3C" },
+  { id:"p2", nom:"Sangliers", color:"#2980B9" },
+  { id:"p3", nom:"Scorpions", color:"#E67E22" },
+  { id:"p4", nom:"Grizzly",   color:"#27AE60" },
+  { id:"p5", nom:"Jaguars",   color:"#8E44AD" },
+  { id:"p6", nom:"Guépards",  color:"#F39C12" },
+  { id:"p7", nom:"Pumas",     color:"#1ABC9C" },
+];
+// ════════════════════════════════════════════════════════
+//  ▲▲▲  FIN DE LA PARTIE À MODIFIER  ▲▲▲
+// ════════════════════════════════════════════════════════
+
+// ── MOT DE PASSE ANIMATEUR ────────────────────────────
+const ADMIN_PASSWORD = "penis";
+
+// ── State ──────────────────────────────────────────────
+let db = null;
+let adminPw = "";
+let isAdmin = false;
+let zoneStates = {};
+let mapLayers = {};
+let currentClaimZone = null;
+let currentValidateZone = null;
+let currentValidateKey  = null;
+let mapInstance = null;
+
+// ── Firebase ───────────────────────────────────────────
+function startApp() {
+  adminPw = ADMIN_PASSWORD;
+  try {
+    const cfg = {
+      apiKey: "AIzaSyBsMzwUVuyogzSsbEsmwlVqFZsN2CkPFLc",
+      authDomain: "conquerir-wsp.firebaseapp.com",
+      databaseURL: "https://conquerir-wsp-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "conquerir-wsp",
+      storageBucket: "conquerir-wsp.firebasestorage.app",
+      messagingSenderId: "800817314787",
+      appId: "1:800817314787:web:c4d71fec2ae1fc46af7ed6"
+    };
+    const app = firebase.initializeApp(cfg);
+    db = firebase.database(app);
+    initMap();
+    listenToZones();
+    monitorConnection();
+  } catch(e) {
+    console.error(e);
+    alert("Erreur Firebase : " + e.message);
+  }
+}
+
+function monitorConnection() {
+  db.ref('.info/connected').on('value', snap => {
+    const on = snap.val();
+    document.getElementById('conn-dot').classList.toggle('online', on);
+    document.getElementById('conn-label').textContent = on ? 'En ligne ✓' : 'Hors ligne…';
+  });
+}
+
+// ── Map ────────────────────────────────────────────────
+function initMap() {
+  mapInstance = L.map('map', { zoomControl:true }).setView([50.833, 4.438], 14);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution:'© OpenStreetMap · © CARTO', subdomains:'abcd', maxZoom:20
+  }).addTo(mapInstance);
+
+  ZONES_DATA.forEach(z => {
+    const poly = L.polygon(z.coords, {
+      color:'#95A5A6', weight:2, opacity:.9,
+      fillColor:'#95A5A6', fillOpacity:.18
+    }).addTo(mapInstance);
+    mapLayers[z.num] = poly;
+
+    poly.on('click', () => openClaimModal(z.num));
+    poly.on('mouseover', function() { this.setStyle({ fillOpacity:.4, weight:3.5 }); });
+    poly.on('mouseout',  function() { refreshPolyStyle(z.num); });
+
+    const c = poly.getBounds().getCenter();
+    L.marker(c, { interactive:false, icon: L.divIcon({
+      className:'zone-lbl',
+      html:`<div id="zone-label-${z.num}" style="background:#95A5A6;color:#fff;
+        font-size:11px;font-weight:800;padding:2px 6px;border-radius:4px;
+        border:1.5px solid rgba(255,255,255,.65);box-shadow:0 1px 4px rgba(0,0,0,.3);
+        white-space:nowrap;text-align:center;line-height:1.35;transition:background .4s;">
+        ${z.num}<br><span style="font-size:9px;font-weight:500">${z.nom.split('/')[0].trim()}</span>
+      </div>`,
+      iconAnchor:[30,18], iconSize:[60,36]
+    })}).addTo(mapInstance);
+  });
+
+  // ── Légende collapsible ──
+  const Leg = L.Control.extend({
+    options:{ position:'bottomright' },
+    onAdd() {
+      const wrap = L.DomUtil.create('div','legend');
+      wrap.id = 'legend-wrap';
+
+      const header = document.createElement('div');
+      header.className = 'legend-header';
+      header.innerHTML = `<span>📋 ${ZONES_DATA.length} Zones</span><span class="legend-toggle" id="leg-toggle">▼</span>`;
+      header.onclick = toggleLegend;
+
+      const body = document.createElement('div');
+      body.className = 'legend-body';
+      body.id = 'legend-body';
+
+      ZONES_DATA.forEach(z => {
+        const row = document.createElement('div');
+        row.className = 'legend-row';
+        row.id = 'leg-' + z.num;
+        row.innerHTML = `<div class="legend-dot" style="background:#95A5A6" id="legdot-${z.num}"></div>
+          <span>${z.num}. ${z.nom}</span>
+          <span class="legend-crown" id="legcrown-${z.num}"></span>`;
+        row.onclick = () => mapInstance.flyToBounds(mapLayers[z.num].getBounds(), {padding:[40,40],duration:.5});
+        body.appendChild(row);
+      });
+
+      wrap.appendChild(header);
+      wrap.appendChild(body);
+      L.DomEvent.disableScrollPropagation(wrap);
+      L.DomEvent.disableClickPropagation(wrap);
+      return wrap;
+    }
+  });
+  new Leg().addTo(mapInstance);
+
+  mapInstance.fitBounds(
+    L.latLngBounds(ZONES_DATA.flatMap(z=>z.coords)),
+    { padding:[14,14] }
+  );
+}
+
+let legendOpen = true;
+function toggleLegend() {
+  legendOpen = !legendOpen;
+  const body = document.getElementById('legend-body');
+  const tog  = document.getElementById('leg-toggle');
+  body.classList.toggle('hidden', !legendOpen);
+  tog.classList.toggle('collapsed', !legendOpen);
+}
+
+// ── Firebase listener ──────────────────────────────────
+function listenToZones() {
+  db.ref('zones').on('value', snap => {
+    zoneStates = snap.val() || {};
+    updateAllUI();
+  });
+}
+
+function updateAllUI() {
+  ZONES_DATA.forEach(z => {
+    refreshPolyStyle(z.num);
+    updateLegendRow(z.num);
+  });
+  updateScorebar();
+  if (isAdmin) renderAdminPanel();
+}
+
+function getPatrol(id) {
+  return PATROUILLES.find(p => p.id === id) || null;
+}
+
+// ── Dominant patrol per zone (most troops) ─────────────
+function getDominant(num) {
+  const state = zoneStates[num];
+  if (!state || !state.troops) return null;
+  let best = null, max = 0;
+  for (const [pid, count] of Object.entries(state.troops)) {
+    if (count > max) { max = count; best = pid; }
+  }
+  return best ? { id: best, count: max } : null;
+}
+
+// ── Poly & label refresh ───────────────────────────────
+function refreshPolyStyle(num) {
+  const poly = mapLayers[num];
+  if (!poly) return;
+  const state    = zoneStates[num];
+  const labelEl  = document.getElementById('zone-label-' + num);
+  const dominant = getDominant(num);
+
+  if (dominant) {
+    const patrol = getPatrol(dominant.id);
+    const col = patrol ? patrol.color : '#95A5A6';
+    poly.setStyle({ color:col, weight:3, fillColor:col, fillOpacity:.45, dashArray:null });
+    if (labelEl) labelEl.style.background = col;
+  } else {
+    poly.setStyle({ color:'#95A5A6', weight:2, fillColor:'#95A5A6', fillOpacity:.18, dashArray:null });
+    if (labelEl) labelEl.style.background = '#95A5A6';
+  }
+
+  const queue = state && state.queue ? Object.values(state.queue) : [];
+  if (queue.length > 0) {
+    poly.setStyle({ dashArray:'8 5', weight:3.5 });
+    if (labelEl) labelEl.style.background = '#E67E22';
+  }
+}
+
+// ── Legend row ─────────────────────────────────────────
+function updateLegendRow(num) {
+  const crown  = document.getElementById('legcrown-' + num);
+  const dot    = document.getElementById('legdot-' + num);
+  const dominant = getDominant(num);
+  if (dominant) {
+    const p = getPatrol(dominant.id);
+    if (crown) crown.textContent = p ? ` 👑 ${p.nom}` : ' 👑';
+    if (dot)   dot.style.background = p ? p.color : '#95A5A6';
+  } else {
+    if (crown) crown.textContent = '';
+    if (dot)   dot.style.background = '#95A5A6';
+  }
+}
+
+// ── Scorebar — total troupes par patrouille ────────────
+function updateScorebar() {
+  const zones = {};
+  PATROUILLES.forEach(p => zones[p.id] = 0);
+  Object.keys(zoneStates).forEach(num => {
+    const dom = getDominant(num);
+    if (dom && zones[dom.id] !== undefined) zones[dom.id]++;
+  });
+  const bar = document.getElementById('scorebar');
+  bar.innerHTML = [...PATROUILLES]
+    .sort((a,b) => (zones[b.id]||0) - (zones[a.id]||0))
+    .map(p =>
+      `<div class="score-pill" style="color:${p.color};border-color:${p.color}">
+        ${p.nom} <span style="color:${p.color}">${zones[p.id]} 🏆</span>
+      </div>`
+    ).join('');
+}
+
+// ── Claim modal ────────────────────────────────────────
+function openClaimModal(num) {
+  const zone  = ZONES_DATA.find(z => z.num === num);
+  const state = zoneStates[num] || {};
+  currentClaimZone = num;
+
+  document.getElementById('claim-title').textContent = `Zone ${num} — ${zone.nom}`;
+
+  // Build troop bars if zone has troops
+  let troopsHtml = '';
+  if (state.troops && Object.keys(state.troops).length > 0) {
+    const maxT = Math.max(...Object.values(state.troops));
+    troopsHtml = `<div class="p-troupes" style="margin-bottom:10px">
+      <div class="p-troupes-title">👥 Troupes présentes</div>` +
+      Object.entries(state.troops).map(([pid, count]) => {
+        const p = getPatrol(pid);
+        if (!p || count === 0) return '';
+        const dots = Array(count).fill(`<span style="color:${p.color};font-size:8px;line-height:1">👤</span>`).join(' ');
+        return `<div class="p-troop-row" style="margin-bottom:5px">
+          <span class="p-troop-name" style="color:${p.color};min-width:72px">${p.nom}</span>
+          <span style="flex:1;letter-spacing:2px">${dots}</span>
+          <span class="p-troop-count" style="color:${p.color}">${count}</span>
+        </div>`;
+      }).join('') + `</div>`;
+  }
+
+  let defiHtml = `<em>${zone.defi}</em><br><strong>👤 ${zone.pts} troupes</strong>`;
+  if (state.reconqDefi) {
+    defiHtml = `<em>${state.reconqDefi}</em>`;
+  }
+  if (state.locked) {
+    defiHtml = `<span style="color:#e74c3c">🔒 Cette zone ne peut plus être reconquise.</span>`;
+  }
+
+  document.getElementById('claim-sub').innerHTML = troopsHtml + defiHtml;
+
+  document.getElementById('claim-patrol').innerHTML = PATROUILLES.map(p =>
+    `<option value="${p.id}">${p.nom}</option>`
+  ).join('');
+
+  // Hide claim button if locked
+  const btn = document.querySelector('#claim-modal .btn-confirm');
+  btn.style.display = state.locked ? 'none' : '';
+
+  openModal('claim-modal');
+}
+
+function submitClaim() {
+  const num    = currentClaimZone;
+  const patrol = document.getElementById('claim-patrol').value;
+  if (!num || !patrol) return;
+  db.ref('zones/' + num + '/queue').push({ patrol, at: Date.now() });
+  closeModal('claim-modal');
+  showToast('✋ Demande envoyée ! L'animateur va valider.');
 }
 
 // ── Admin login ────────────────────────────────────────
@@ -741,31 +1590,24 @@ function renderAdminPanel() {
     }
 
     let resetBtn = dom ? `<button class="btn-reset-zone" onclick="resetZone(${z.num})">↺ Remettre libre</button>` : '';
-    let editDefiBtn = (state.reconqDefi || state.locked !== undefined)
-      ? `<button class="btn-reset-zone" style="margin-left:6px" onclick="editReconqDefi(${z.num})">✏️ Modifier défi</button>`
-      : '';
-
-    const currentDefi = state.locked
-      ? '<span style="color:#e74c3c;font-size:11px">🔒 Zone verrouillée</span>'
-      : state.reconqDefi
-        ? `<div style="font-size:11px;color:#555;margin-top:5px;font-style:italic">"${state.reconqDefi}"</div>`
-        : '';
 
     card.innerHTML = `
       <div class="azc-top"><div class="azc-name">${z.num}. ${z.nom}</div>${ownerBadge}</div>
-      ${currentDefi}
       ${requestHtml}
-      <div style="margin-top:6px">${resetBtn}${editDefiBtn}</div>`;
+      <div style="margin-top:6px">${resetBtn}</div>`;
     list.appendChild(card);
   });
 }
 
 // ── Validate modal ─────────────────────────────────────
-function openValidateModal(num) {
+function openValidateModal(num, queueKey) {
   currentValidateZone = num;
+  currentValidateKey  = queueKey || null;
   const zone    = ZONES_DATA.find(z => z.num === num);
   const state   = zoneStates[num] || {};
-  const pending = getPatrol(state.pendingPatrol);
+  const queue   = state.queue ? Object.entries(state.queue).sort((a,b) => a[1].at - b[1].at) : [];
+  const req     = queueKey ? (state.queue[queueKey] || {}) : (queue[0] ? queue[0][1] : {});
+  const pending = getPatrol(req.patrol);
 
   document.getElementById('val-title').textContent = `✅ Valider — Zone ${num} : ${zone.nom}`;
   document.getElementById('val-sub').textContent   = `Patrouille : ${pending ? pending.nom : '?'}`;
@@ -791,28 +1633,44 @@ function confirmValidate() {
   const locked = document.getElementById('no-defi-check').checked;
   const defi   = document.getElementById('val-defi').value.trim();
   const state  = zoneStates[num] || {};
-  const patrol = getPatrol(state.pendingPatrol);
 
   if (!locked && !defi) { alert('Saisissez un défi de reconquête, ou cochez "pas de défi".'); return; }
 
-  // Add troops to this patrol in this zone
-  const currentTroops = (state.troops && state.troops[state.pendingPatrol]) || 0;
+  // Find the request in queue
+  const queue = state.queue ? Object.entries(state.queue).sort((a,b) => a[1].at - b[1].at) : [];
+  const [qKey, req] = currentValidateKey && state.queue && state.queue[currentValidateKey]
+    ? [currentValidateKey, state.queue[currentValidateKey]]
+    : (queue[0] || [null, {}]);
+
+  if (!req || !req.patrol) { alert('Aucune demande trouvée.'); return; }
+
+  const patrol = getPatrol(req.patrol);
+  const currentTroops = (state.troops && state.troops[req.patrol]) || 0;
+
   const update = {
-    [`troops/${state.pendingPatrol}`]: currentTroops + troops,
-    pendingPatrol: null,
-    pendingAt: null,
+    [`troops/${req.patrol}`]: currentTroops + troops,
     locked: locked ? true : null,
     reconqDefi: locked ? null : defi,
   };
   db.ref('zones/' + num).update(update);
+
+  // Remove this request from queue
+  if (qKey) db.ref('zones/' + num + '/queue/' + qKey).remove();
 
   closeModal('validate-modal');
   showToast(`👤 +${troops} troupes pour ${patrol ? patrol.nom : '?'} !`);
   setTimeout(renderAdminPanel, 400);
 }
 
-function rejectClaim(num) {
-  db.ref('zones/' + num).update({ pendingPatrol: null, pendingAt: null });
+function rejectClaim(num, queueKey) {
+  if (queueKey) {
+    db.ref('zones/' + num + '/queue/' + queueKey).remove();
+  } else {
+    // Remove first in queue
+    const state = zoneStates[num] || {};
+    const queue = state.queue ? Object.entries(state.queue).sort((a,b) => a[1].at - b[1].at) : [];
+    if (queue[0]) db.ref('zones/' + num + '/queue/' + queue[0][0]).remove();
+  }
   showToast('✕ Demande refusée');
   setTimeout(renderAdminPanel, 400);
 }
@@ -821,38 +1679,6 @@ function resetZone(num) {
   if (!confirm(`Remettre la zone ${num} comme libre (efface toutes les troupes) ?`)) return;
   db.ref('zones/' + num).set(null);
   showToast(`Zone ${num} remise libre`);
-  setTimeout(renderAdminPanel, 400);
-}
-
-// ── Edit reconquest defi ──────────────────────────────
-function editReconqDefi(num) {
-  const zone  = ZONES_DATA.find(z => z.num === num);
-  const state = zoneStates[num] || {};
-  const current = state.reconqDefi || '';
-  const locked  = state.locked;
-
-  const choice = locked
-    ? confirm(`Zone ${num} est verrouillée 🔒\nCliquez OK pour la déverrouiller et saisir un nouveau défi de reconquête.\nCliquez Annuler pour ne rien changer.`)
-    : true;
-
-  if (!choice) return;
-
-  const newDefi = prompt(
-    `Défi de reconquête pour Zone ${num} — ${zone.nom}\n(laissez vide et validez pour verrouiller la zone)`,
-    current
-  );
-
-  if (newDefi === null) return; // cancelled
-
-  if (newDefi.trim() === '') {
-    if (confirm('Aucun défi saisi — voulez-vous verrouiller la zone ? (ne pourra plus être reconquise)')) {
-      db.ref('zones/' + num).update({ reconqDefi: null, locked: true });
-      showToast(`Zone ${num} verrouillée 🔒`);
-    }
-  } else {
-    db.ref('zones/' + num).update({ reconqDefi: newDefi.trim(), locked: null });
-    showToast(`✏️ Défi de reconquête mis à jour !`);
-  }
   setTimeout(renderAdminPanel, 400);
 }
 
