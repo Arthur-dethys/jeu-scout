@@ -532,10 +532,12 @@ function getPatrol(id) {
 function getDominant(num) {
   const state = zoneStates[num];
   if (!state || !state.troops) return null;
-  let best = null, max = 0;
+  let best = null, max = 0, tie = false;
   for (const [pid, count] of Object.entries(state.troops)) {
-    if (count > max) { max = count; best = pid; }
+    if (count > max)       { max = count; best = pid; tie = false; }
+    else if (count === max && count > 0) { tie = true; }
   }
+  if (tie) return null; // égalité → zone neutre
   return best ? { id: best, count: max } : null;
 }
 
