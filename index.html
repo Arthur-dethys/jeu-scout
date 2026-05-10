@@ -650,7 +650,7 @@ function submitClaim() {
   if (!num || !patrol) return;
   db.ref('zones/' + num + '/queue').push({ patrol, at: Date.now() });
   closeModal('claim-modal');
-  showToast('✋ Demande envoyée ! L'animateur va valider.');
+  showToast('✋ Demande envoyée ! L\'animateur va valider.');
 }
 
 // ── Admin login ────────────────────────────────────────
