@@ -739,12 +739,23 @@ function renderAdminPanel() {
       </div>`;
     }
 
-    let resetBtn = dom ? `<button class="btn-reset-zone" onclick="resetZone(${z.num})">↺ Remettre libre</button>` : '';
+    let resetBtn = dom
+      ? '<button class="btn-reset-zone" onclick="resetZone(' + z.num + ')">↺ Remettre libre</button>'
+      : '';
+    let editBtn = (dom || state.locked)
+      ? '<button class="btn-reset-zone" style="margin-left:6px" onclick="editReconqDefi(' + z.num + ')">✏️ Modifier défi</button>'
+      : '';
 
-    card.innerHTML = `
-      <div class="azc-top"><div class="azc-name">${z.num}. ${z.nom}</div>${ownerBadge}</div>
-      ${requestHtml}
-      <div style="margin-top:6px">${resetBtn}</div>`;
+    let currentDefi = '';
+    if (state.locked) {
+      currentDefi = '<div style="color:#e74c3c;font-size:11px;margin-top:4px">🔒 Zone verrouillée</div>';
+    } else if (state.reconqDefi) {
+      currentDefi = '<div style="font-size:11px;color:#555;margin-top:4px;font-style:italic">&quot;' + state.reconqDefi + '&quot;</div>';
+    }
+
+    card.innerHTML = '<div class="azc-top"><div class="azc-name">' + z.num + '. ' + z.nom + '</div>' + ownerBadge + '</div>'
+      + currentDefi + requestHtml
+      + '<div style="margin-top:6px">' + resetBtn + editBtn + '</div>';
     list.appendChild(card);
   });
 }
@@ -829,6 +840,32 @@ function resetZone(num) {
   if (!confirm(`Remettre la zone ${num} comme libre (efface toutes les troupes) ?`)) return;
   db.ref('zones/' + num).set(null);
   showToast(`Zone ${num} remise libre`);
+  setTimeout(renderAdminPanel, 400);
+}
+
+// ── Edit reconquest defi ──────────────────────────────
+function editReconqDefi(num) {
+  const zone  = ZONES_DATA.find(function(z){ return z.num === num; });
+  const state = zoneStates[num] || {};
+  const locked = state.locked;
+
+  if (locked) {
+    const unlock = confirm('Zone ' + num + ' est verrouillée 🔒\nOK = déverrouiller et ajouter un défi.\nAnnuler = ne rien changer.');
+    if (!unlock) return;
+  }
+
+  const newDefi = prompt('Défi de reconquête pour Zone ' + num + ' — ' + zone.nom + '\n(vide = verrouiller)', state.reconqDefi || '');
+  if (newDefi === null) return;
+
+  if (newDefi.trim() === '') {
+    if (confirm('Aucun défi — voulez-vous verrouiller la zone ?')) {
+      db.ref('zones/' + num).update({ reconqDefi: null, locked: true });
+      showToast('Zone ' + num + ' verrouillée 🔒');
+    }
+  } else {
+    db.ref('zones/' + num).update({ reconqDefi: newDefi.trim(), locked: null });
+    showToast('✏️ Défi mis à jour !');
+  }
   setTimeout(renderAdminPanel, 400);
 }
 
@@ -1679,6 +1716,32 @@ function resetZone(num) {
   if (!confirm(`Remettre la zone ${num} comme libre (efface toutes les troupes) ?`)) return;
   db.ref('zones/' + num).set(null);
   showToast(`Zone ${num} remise libre`);
+  setTimeout(renderAdminPanel, 400);
+}
+
+// ── Edit reconquest defi ──────────────────────────────
+function editReconqDefi(num) {
+  const zone  = ZONES_DATA.find(function(z){ return z.num === num; });
+  const state = zoneStates[num] || {};
+  const locked = state.locked;
+
+  if (locked) {
+    const unlock = confirm('Zone ' + num + ' est verrouillée 🔒\nOK = déverrouiller et ajouter un défi.\nAnnuler = ne rien changer.');
+    if (!unlock) return;
+  }
+
+  const newDefi = prompt('Défi de reconquête pour Zone ' + num + ' — ' + zone.nom + '\n(vide = verrouiller)', state.reconqDefi || '');
+  if (newDefi === null) return;
+
+  if (newDefi.trim() === '') {
+    if (confirm('Aucun défi — voulez-vous verrouiller la zone ?')) {
+      db.ref('zones/' + num).update({ reconqDefi: null, locked: true });
+      showToast('Zone ' + num + ' verrouillée 🔒');
+    }
+  } else {
+    db.ref('zones/' + num).update({ reconqDefi: newDefi.trim(), locked: null });
+    showToast('✏️ Défi mis à jour !');
+  }
   setTimeout(renderAdminPanel, 400);
 }
 
